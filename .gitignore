@@ -8,3 +8,6 @@ playwright-report/
 
 # 夜原安装包太大（>100MB），不进 git；已直接发送
 yeyuan_apk/*.apk
+
+# 源码压缩包只发给用户，不进 git
+yeyuan_apk/*.zip
