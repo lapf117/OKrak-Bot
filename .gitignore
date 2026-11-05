@@ -11,3 +11,4 @@ yeyuan_apk/*.apk
 
 # 源码压缩包只发给用户，不进 git
 yeyuan_apk/*.zip
+yeyuan_apk/*.tar.gz
