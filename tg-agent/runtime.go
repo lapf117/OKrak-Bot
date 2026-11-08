@@ -98,10 +98,16 @@ func recordUsage(ctx context.Context, prompt, completion int) {
 
 // taskUsage reports tool calls and total tokens for the footer and run log.
 func taskUsage(ctx context.Context) (tools, tokens int64) {
+	t, p, c := taskUsageDetailed(ctx)
+	return t, p + c
+}
+
+// taskUsageDetailed also splits prompt and completion tokens.
+func taskUsageDetailed(ctx context.Context) (tools, prompt, completion int64) {
 	if b := budgetOf(ctx); b != nil {
-		return atomic.LoadInt64(&b.ToolCalls), atomic.LoadInt64(&b.PromptTokens) + atomic.LoadInt64(&b.CompletionTokens)
+		return atomic.LoadInt64(&b.ToolCalls), atomic.LoadInt64(&b.PromptTokens), atomic.LoadInt64(&b.CompletionTokens)
 	}
-	return 0, 0
+	return 0, 0, 0
 }
 
 // ---------------- running tasks ----------------

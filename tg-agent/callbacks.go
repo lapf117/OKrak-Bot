@@ -88,6 +88,8 @@ func handleCallback(cb CallbackQuery) {
 		}
 		toast = tr(next, "lang.changed")
 		editUI(chatID, msgID, menuText(uid), mainMenu(uid))
+	case data == "act:usage":
+		editUI(chatID, msgID, usagePanel(uid, lang), usageMenu(lang, admin))
 	case data == "act:memory":
 		editUI(chatID, msgID, memoryPanel(uid, lang), memoryMenu(lang))
 	case data == "memory:clear":

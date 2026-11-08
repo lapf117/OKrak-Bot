@@ -49,6 +49,8 @@ func handleCommand(chatID, uid int64, t, low string) bool {
 		return handleMemoryCommand(chatID, uid, rest)
 	case "/export":
 		exportConversation(chatID, uid)
+	case "/usage", "/balance":
+		handleUsageCommand(chatID, uid)
 	case "/think":
 		if !isAdmin(uid) {
 			sendMessage(chatID, tr(lang, "err.admin_only"), nil)

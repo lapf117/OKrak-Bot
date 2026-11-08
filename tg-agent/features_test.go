@@ -525,3 +525,46 @@ func TestEditHTMLTreatsNotModifiedAsSuccessAndFallsBack(t *testing.T) {
 }
 
 func ioNopCloser(s string) io.ReadCloser { return io.NopCloser(strings.NewReader(s)) }
+
+func TestBalanceURLAndParsing(t *testing.T) {
+	for base, want := range map[string]string{
+		"https://api.deepseek.com/v1":  "https://api.deepseek.com/user/balance",
+		"https://api.deepseek.com":     "https://api.deepseek.com/user/balance",
+		"https://proxy.example/api/v1": "https://proxy.example/user/balance",
+	} {
+		if got, ok := balanceURL(base); !ok || got != want {
+			t.Errorf("balanceURL(%q)=%q,%v want %q", base, got, ok, want)
+		}
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/user/balance" || r.Header.Get("Authorization") != "Bearer k" {
+			w.WriteHeader(400)
+			return
+		}
+		io.WriteString(w, `{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"110.00","granted_balance":"10.00","topped_up_balance":"100.00"}]}`)
+	}))
+	defer srv.Close()
+	c := runtimeTestConfig(t)
+	c.Provider = []Provider{{Name: "deepseek", BaseURL: srv.URL + "/v1", APIKey: "k", Models: []string{"deepseek-chat"}}}
+	c.ProviderName = "deepseek"
+	bal, err := providerBalance(context.Background(), c)
+	if err != nil || !bal.IsAvailable {
+		t.Fatalf("balance: %+v %v", bal, err)
+	}
+	if txt := balanceText(bal); !strings.Contains(txt, "110.00 CNY") || !strings.Contains(txt, "充值 100.00") {
+		t.Fatalf("balanceText=%q", txt)
+	}
+}
+
+func TestUsageAccumulates(t *testing.T) {
+	runtimeTestConfig(t) // sets baseDir to a temp dir
+	recordTaskUsage(3, 100, 40)
+	recordTaskUsage(2, 50, 10)
+	u := getUsage()
+	if u.Tasks != 2 || u.ToolCalls != 5 || u.PromptTokens != 150 || u.CompletionTokens != 50 || u.total() != 200 {
+		t.Fatalf("usage=%+v", u)
+	}
+	if u.Since == 0 {
+		t.Fatal("since not initialised")
+	}
+}

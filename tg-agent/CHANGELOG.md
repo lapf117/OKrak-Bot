@@ -1,3 +1,10 @@
+# 2.1.2
+
+- 面向 DeepSeek：示例配置默认使用 deepseek 服务商（api.deepseek.com，deepseek-chat / deepseek-reasoner），后端只需自行填入 API Key。
+- 主界面新增“用量”面板与 /usage：累计 token（输入/输出）、任务数、工具调用数、统计起始日期、最近一次 token 用量。
+- 通过服务商官方 /user/balance 接口查询余额（DeepSeek 兼容），余额与可用状态仅管理员可见。
+- 累计用量持久化到 usage.json（运行数据，不纳入版本库）。
+
 # 2.1.1
 
 - 界面精简为后台管理形态：普通用户只看到使用，模型/推理/清除对话在前台，其余设置（人设、系统提示词、服务商、工作区、用户管理等）集中在管理员菜单与 config.json（终端），用户看不到。

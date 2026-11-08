@@ -14,7 +14,7 @@ func mainMenu(uid int64) map[string]interface{} {
 		return keyboard([][]Btn{{btn(tr(lang, "btn.new"), "act:new"), btn(tr(lang, "btn.help"), "act:help")}})
 	}
 	return keyboard([][]Btn{
-		{btn(tr(lang, "btn.new"), "act:new")},
+		{btn(tr(lang, "btn.new"), "act:new"), btn(tr(lang, "btn.usage"), "act:usage")},
 		{btn(tr(lang, "btn.model"), "nav:model"), btn(tr(lang, "btn.effort"), "nav:effort")},
 		{btn(tr(lang, "btn.settings"), "nav:settings"), btn(tr(lang, "btn.help"), "act:help")},
 	})

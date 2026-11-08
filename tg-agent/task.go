@@ -117,10 +117,12 @@ func runUserTaskOpts(chatID, uid int64, text string, images []string, opts taskO
 	renderMu.Lock() // wait for an in-flight edit before the final one
 	renderMu.Unlock()
 
-	tools, tokens := taskUsage(ctx)
+	tools, prompt, completion := taskUsageDetailed(ctx)
+	tokens := prompt + completion
 	if tokens > 0 {
 		lastUsage.Store(chatID, tokens)
 	}
+	recordTaskUsage(tools, prompt, completion)
 	trace := panel.snapshot()
 	finalCtx, cancelFinal := context.WithTimeout(telegramContext, 30*time.Second)
 	defer cancelFinal()

@@ -14,3 +14,7 @@ coverage.out
 /updates.offset
 /data/
 /tgagent
+/usage.json
+/prefs.json
+/memory/
+/exports/

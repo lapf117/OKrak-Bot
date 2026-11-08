@@ -15,7 +15,7 @@ import (
 )
 
 var configFile string
-var version = "2.1.1"
+var version = "2.1.2"
 
 // botCommands is the Telegram command menu, registered in both languages.
 var botCommands = []struct{ name, zh, en string }{
@@ -23,6 +23,7 @@ var botCommands = []struct{ name, zh, en string }{
 	{"new", "新建对话", "Start a new conversation"},
 	{"stop", "停止当前任务", "Stop the running task"},
 	{"status", "运行状态", "Show status"},
+	{"usage", "用量与余额", "Usage and balance"},
 	{"memory", "长期备忘", "Long-term memory"},
 	{"skills", "技能中心", "Skills"},
 	{"lang", "切换语言 中文/English", "Switch language"},
