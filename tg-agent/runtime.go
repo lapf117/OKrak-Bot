@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/url"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,27 +14,36 @@ const (
 	configContextKey runtimeKey = iota
 	identityContextKey
 	budgetContextKey
+	langContextKey
 )
 
 type executionIdentityValue struct {
 	ChatID, UserID int64
 	Depth          int
 }
+
+// executionBudget is shared by a task and all of its sub-agents.
 type executionBudget struct {
-	Steps    int64
-	Children int64
+	Steps            int64
+	Children         int64
+	ToolCalls        int64
+	PromptTokens     int64
+	CompletionTokens int64
+	approveAll       int32 // set when the user approves every action of this task
 }
 
 // WithExecutionConfig freezes connection, workspace and limits for an entire task.
 func WithExecutionConfig(ctx context.Context, c Config) context.Context {
 	return context.WithValue(ctx, configContextKey, cloneConfig(c))
 }
+
 func executionConfig(ctx context.Context) Config {
 	if c, ok := ctx.Value(configContextKey).(Config); ok {
 		return c
 	}
 	return configSnapshot()
 }
+
 func executionIdentity(ctx context.Context) (chatID, uid int64, depth int) {
 	if v, ok := ctx.Value(identityContextKey).(executionIdentityValue); ok {
 		return v.ChatID, v.UserID, v.Depth
@@ -44,57 +51,35 @@ func executionIdentity(ctx context.Context) (chatID, uid int64, depth int) {
 	return 0, 0, 0
 }
 
-var taskRegistry = struct {
-	sync.Mutex
-	tasks map[int64]context.CancelFunc
-}{tasks: make(map[int64]context.CancelFunc)}
+func executionUID(ctx context.Context) int64 { _, uid, _ := executionIdentity(ctx); return uid }
 
-func beginTask(chatID int64) (context.Context, func(), bool) {
-	taskRegistry.Lock()
-	defer taskRegistry.Unlock()
-	if telegramContext.Err() != nil {
-		return nil, nil, false
-	}
-	if _, exists := taskRegistry.tasks[chatID]; exists {
-		return nil, nil, false
-	}
-	c := configSnapshot()
-	seconds := c.TaskTimeoutSeconds
-	if seconds <= 0 {
-		seconds = 1800
-	}
-	ctx, cancel := context.WithTimeout(WithExecutionConfig(telegramContext, c), time.Duration(seconds)*time.Second)
-	taskRegistry.tasks[chatID] = cancel
-	var once sync.Once
-	finish := func() {
-		once.Do(func() { cancel(); taskRegistry.Lock(); delete(taskRegistry.tasks, chatID); taskRegistry.Unlock() })
-	}
-	return ctx, finish, true
+func withLang(ctx context.Context, lang string) context.Context {
+	return context.WithValue(ctx, langContextKey, lang)
 }
-func stopTask(chatID int64) bool {
-	taskRegistry.Lock()
-	cancel, ok := taskRegistry.tasks[chatID]
-	taskRegistry.Unlock()
-	if ok {
-		cancel()
+
+// ctxLang is the reply/UI language of the running task (Chinese by default).
+func ctxLang(ctx context.Context) string {
+	if l, ok := ctx.Value(langContextKey).(string); ok && l == langEN {
+		return langEN
 	}
-	// Keep old handlers compatible during migration.
-	if f, exists := stopFlags.Load(chatID); exists {
-		atomic.StoreInt32(f.(*int32), 1)
-		ok = true
-	}
-	return ok
+	return langZH
 }
-func stopAllTasks() {
-	taskRegistry.Lock()
-	defer taskRegistry.Unlock()
-	for _, cancel := range taskRegistry.tasks {
-		cancel()
+
+func budgetOf(ctx context.Context) *executionBudget {
+	b, _ := ctx.Value(budgetContextKey).(*executionBudget)
+	return b
+}
+
+// withTaskBudget attaches a fresh budget and per-task tool state once.
+func withTaskBudget(ctx context.Context, c Config) context.Context {
+	if budgetOf(ctx) == nil {
+		ctx = context.WithValue(ctx, budgetContextKey, &executionBudget{Steps: int64(maxPositive(c.MaxSteps, 25))})
 	}
+	return withTodoContext(ctx)
 }
 
 func consumeStep(ctx context.Context) error {
-	budget, _ := ctx.Value(budgetContextKey).(*executionBudget)
+	budget := budgetOf(ctx)
 	if budget == nil {
 		return nil
 	}
@@ -104,18 +89,112 @@ func consumeStep(ctx context.Context) error {
 	return ctx.Err()
 }
 
+func recordUsage(ctx context.Context, prompt, completion int) {
+	if b := budgetOf(ctx); b != nil {
+		atomic.AddInt64(&b.PromptTokens, int64(prompt))
+		atomic.AddInt64(&b.CompletionTokens, int64(completion))
+	}
+}
+
+// taskUsage reports tool calls and total tokens for the footer and run log.
+func taskUsage(ctx context.Context) (tools, tokens int64) {
+	if b := budgetOf(ctx); b != nil {
+		return atomic.LoadInt64(&b.ToolCalls), atomic.LoadInt64(&b.PromptTokens) + atomic.LoadInt64(&b.CompletionTokens)
+	}
+	return 0, 0
+}
+
+// ---------------- running tasks ----------------
+
+type liveTask struct {
+	cancel  context.CancelFunc
+	started time.Time
+	origin  string
+}
+
+var taskRegistry = struct {
+	sync.Mutex
+	tasks map[int64]*liveTask
+}{tasks: make(map[int64]*liveTask)}
+
+func beginTask(chatID int64) (context.Context, func(), bool) {
+	return beginTaskWithOrigin(chatID, "")
+}
+
+// beginTaskWithOrigin admits one task per private chat with a frozen config.
+func beginTaskWithOrigin(chatID int64, origin string) (context.Context, func(), bool) {
+	taskRegistry.Lock()
+	defer taskRegistry.Unlock()
+	if telegramContext.Err() != nil {
+		return nil, nil, false
+	}
+	if _, exists := taskRegistry.tasks[chatID]; exists {
+		return nil, nil, false
+	}
+	c := configSnapshot()
+	seconds := maxPositive(c.TaskTimeoutSeconds, 1800)
+	ctx, cancel := context.WithTimeout(WithExecutionConfig(telegramContext, c), time.Duration(seconds)*time.Second)
+	entry := &liveTask{cancel: cancel, started: time.Now(), origin: origin}
+	taskRegistry.tasks[chatID] = entry
+	var once sync.Once
+	finish := func() {
+		once.Do(func() {
+			cancel()
+			taskRegistry.Lock()
+			if taskRegistry.tasks[chatID] == entry {
+				delete(taskRegistry.tasks, chatID)
+			}
+			taskRegistry.Unlock()
+		})
+	}
+	return ctx, finish, true
+}
+
+func stopTask(chatID int64) bool {
+	taskRegistry.Lock()
+	entry, ok := taskRegistry.tasks[chatID]
+	taskRegistry.Unlock()
+	if ok {
+		entry.cancel()
+	}
+	return ok
+}
+
+func stopAllTasks() {
+	taskRegistry.Lock()
+	defer taskRegistry.Unlock()
+	for _, entry := range taskRegistry.tasks {
+		entry.cancel()
+	}
+}
+
+func isBusy(chatID int64) bool {
+	taskRegistry.Lock()
+	defer taskRegistry.Unlock()
+	_, ok := taskRegistry.tasks[chatID]
+	return ok
+}
+
+// runningTask returns how long the chat's task has been running.
+func runningTask(chatID int64) (time.Duration, string, bool) {
+	taskRegistry.Lock()
+	defer taskRegistry.Unlock()
+	if entry, ok := taskRegistry.tasks[chatID]; ok {
+		return time.Since(entry.started), entry.origin, true
+	}
+	return 0, "", false
+}
+
+// ---------------- sub-agents ----------------
+
 func spawnAgentContext(ctx context.Context, task string) (string, error) {
 	chatID, uid, depth := executionIdentity(ctx)
 	if uid == 0 {
 		return "", fmt.Errorf("子任务缺少用户身份")
 	}
-	c := executionConfig(ctx)
-	limit := c.MaxSubagents
-	if limit <= 0 {
-		limit = 3
-	}
-	budget, ok := ctx.Value(budgetContextKey).(*executionBudget)
-	if !ok {
+	limit := maxPositive(executionConfig(ctx).MaxSubagents, 3)
+	budget := budgetOf(ctx)
+	if budget == nil {
 		return "", fmt.Errorf("子任务缺少共享预算")
 	}
 	if atomic.AddInt64(&budget.Children, 1) > int64(limit) {
@@ -124,10 +203,9 @@ func spawnAgentContext(ctx context.Context, task string) (string, error) {
 	if depth >= 3 {
 		return "", fmt.Errorf("子智能体层级达到上限")
 	}
-	return runAgentContext(ctx, chatID, uid, task, nil, depth+1, nil)
+	// A child gets its own plan; files, undo history and budget stay shared.
+	return runAgentContext(withPlanContext(ctx), chatID, uid, task, nil, depth+1, nil)
 }
-
-func executionUID(ctx context.Context) int64 { _, uid, _ := executionIdentity(ctx); return uid }
 
 // Current membership is checked independently from the captured execution mode.
 func checkExecutionAccess(ctx context.Context) error {
@@ -142,23 +220,5 @@ func checkExecutionAccess(ctx context.Context) error {
 
 // A running task must also redact the credentials it captured before a settings change.
 func redactExecutionSecrets(ctx context.Context, s string) string {
-	s = redactSecrets(s)
-	c := executionConfig(ctx)
-	secrets := []string{c.Token, c.ASR.APIKey}
-	for _, p := range c.Provider {
-		secrets = append(secrets, p.APIKey)
-	}
-	if c.Proxy != "" {
-		if u, err := url.Parse(c.Proxy); err == nil && u.User != nil {
-			if pass, ok := u.User.Password(); ok {
-				secrets = append(secrets, pass)
-			}
-		}
-	}
-	for _, secret := range secrets {
-		if len(secret) >= 6 {
-			s = strings.ReplaceAll(s, secret, "[REDACTED]")
-		}
-	}
-	return s
+	return redactWith(redactSecrets(s), secretsOf(executionConfig(ctx)))
 }

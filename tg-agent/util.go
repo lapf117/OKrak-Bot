@@ -21,15 +21,15 @@ func logf(format string, a ...interface{}) {
 	defer logMu.Unlock()
 	fmt.Print(line)
 	if logFile != nil {
-		logFile.WriteString(line)
+		_, _ = logFile.WriteString(line)
 	}
 }
 
 func openLog() {
-	logFile, _ = os.OpenFile(filepath.Join(baseDir, "agent.log"),
-		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	logFile, _ = os.OpenFile(filepath.Join(baseDir, "agent.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 }
 
+// short truncates by runes and marks the cut with an ellipsis.
 func short(s string, n int) string {
 	r := []rune(s)
 	if len(r) > n {
@@ -38,11 +38,69 @@ func short(s string, n int) string {
 	return s
 }
 
+// oneLine collapses whitespace so values fit on a single status line.
+func oneLine(s string, n int) string {
+	return short(strings.Join(strings.Fields(s), " "), n)
+}
+
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// envOrDie 保证关键配置存在
+func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+func maxPositive(value, fallback int) int {
+	if value > 0 {
+		return value
+	}
+	return fallback
+}
+
+// argsAfter returns the text that follows the first n whitespace-separated
+// fields. Unlike slicing by len("add "+name) it tolerates repeated spaces.
+func argsAfter(text string, n int) string {
+	rest := strings.TrimLeft(text, " \t\r\n")
+	for i := 0; i < n; i++ {
+		end := strings.IndexAny(rest, " \t\r\n")
+		if end < 0 {
+			return ""
+		}
+		rest = strings.TrimLeft(rest[end:], " \t\r\n")
+	}
+	return strings.TrimSpace(rest)
+}
+
+func humanDuration(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	case d < time.Hour:
+		return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
+	default:
+		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
+	}
+}
+
+// clock renders elapsed time as m:ss for live progress panels.
+func clock(d time.Duration) string {
+	s := int(d.Seconds())
+	if s >= 3600 {
+		return fmt.Sprintf("%d:%02d:%02d", s/3600, s/60%60, s%60)
+	}
+	return fmt.Sprintf("%d:%02d", s/60, s%60)
+}
+
+func humanTokens(n int64) string {
+	switch {
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 1000:
+		return fmt.Sprintf("%.1fk", float64(n)/1000)
+	}
+	return fmt.Sprintf("%d", n)
+}
+
+// mustConfig ensures the settings required to talk to Telegram and a model exist.
 func mustConfig() error {
 	c := configSnapshot()
 	if err := validateConfig(c); err != nil {
@@ -92,9 +150,8 @@ func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
 	return os.Rename(name, path)
 }
 
-// Redact configured credentials before error messages and audit data leave the process.
-func redactSecrets(s string) string {
-	c := configSnapshot()
+// secretsOf lists the credentials that must never leave the process.
+func secretsOf(c Config) []string {
 	secrets := []string{c.Token, c.ASR.APIKey}
 	for _, p := range c.Provider {
 		secrets = append(secrets, p.APIKey)
@@ -106,6 +163,10 @@ func redactSecrets(s string) string {
 			}
 		}
 	}
+	return secrets
+}
+
+func redactWith(s string, secrets []string) string {
 	for _, secret := range secrets {
 		if len(secret) >= 6 {
 			s = strings.ReplaceAll(s, secret, "[REDACTED]")
@@ -113,3 +174,6 @@ func redactSecrets(s string) string {
 	}
 	return s
 }
+
+// Redact configured credentials before error messages and audit data leave the process.
+func redactSecrets(s string) string { return redactWith(s, secretsOf(configSnapshot())) }

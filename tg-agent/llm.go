@@ -20,6 +20,7 @@ type Part struct {
 		URL string `json:"url"`
 	} `json:"image_url,omitempty"`
 }
+
 type ToolCall struct {
 	ID       string `json:"id"`
 	Type     string `json:"type"`
@@ -28,6 +29,7 @@ type ToolCall struct {
 		Arguments string `json:"arguments"`
 	} `json:"function"`
 }
+
 type LLMMessage struct {
 	Role             string      `json:"role"`
 	ReasoningContent string      `json:"reasoning_content,omitempty"`
@@ -38,6 +40,7 @@ type LLMMessage struct {
 }
 
 func textMsg(role, text string) LLMMessage { return LLMMessage{Role: role, Content: text} }
+
 func textOf(m LLMMessage) string {
 	switch v := m.Content.(type) {
 	case string:
@@ -53,11 +56,9 @@ func textOf(m LLMMessage) string {
 	case []interface{}:
 		var b strings.Builder
 		for _, p := range v {
-			if obj, ok := p.(map[string]interface{}); ok {
-				if obj["type"] == "text" {
-					if t, ok := obj["text"].(string); ok {
-						b.WriteString(t)
-					}
+			if obj, ok := p.(map[string]interface{}); ok && obj["type"] == "text" {
+				if t, ok := obj["text"].(string); ok {
+					b.WriteString(t)
 				}
 			}
 		}
@@ -74,6 +75,7 @@ type ToolSchema struct {
 		Parameters  interface{} `json:"parameters"`
 	} `json:"function"`
 }
+
 type chatRequest struct {
 	Model           string       `json:"model"`
 	ReasoningEffort string       `json:"reasoning_effort,omitempty"`
@@ -82,6 +84,7 @@ type chatRequest struct {
 	Temperature     *float64     `json:"temperature,omitempty"`
 	Stream          bool         `json:"stream"`
 }
+
 type chatResponse struct {
 	Choices []struct {
 		Message      LLMMessage `json:"message"`
@@ -102,18 +105,12 @@ var llmClient = &http.Client{Timeout: 300 * time.Second}
 func chat(messages []LLMMessage, schemas []ToolSchema) (*chatResponse, error) {
 	return chatContext(WithExecutionConfig(context.Background(), configSnapshot()), messages, schemas)
 }
+
+// chatContext calls an OpenAI-compatible Chat Completions endpoint with the
+// task's frozen provider settings, retrying 429/5xx and transport failures.
 func chatContext(ctx context.Context, messages []LLMMessage, schemas []ToolSchema) (*chatResponse, error) {
 	c := executionConfig(ctx)
-	var p *Provider
-	for i := range c.Provider {
-		if c.Provider[i].Name == c.ProviderName {
-			p = &c.Provider[i]
-			break
-		}
-	}
-	if p == nil && len(c.Provider) > 0 {
-		p = &c.Provider[0]
-	}
+	p := providerFor(c)
 	if p == nil {
 		return nil, fmt.Errorf("没有配置模型服务")
 	}
@@ -127,7 +124,7 @@ func chatContext(ctx context.Context, messages []LLMMessage, schemas []ToolSchem
 	if model == "" {
 		return nil, fmt.Errorf("未配置模型名称")
 	}
-	bodyReq := chatRequest{Model: model, ReasoningEffort: c.ReasoningEffort, Messages: messages, Tools: schemas, Stream: false}
+	bodyReq := chatRequest{Model: model, ReasoningEffort: c.ReasoningEffort, Messages: messages, Tools: schemas}
 	// Most reasoning providers reject a custom temperature. An empty effort keeps the compatible temperature option.
 	if c.ReasoningEffort == "" {
 		bodyReq.Temperature = &c.Temperature
@@ -195,10 +192,7 @@ func chatContext(ctx context.Context, messages []LLMMessage, schemas []ToolSchem
 			if attempt < 2 {
 				delay := time.Duration(attempt+1) * 2 * time.Second
 				if seconds, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && seconds > 0 {
-					if seconds > 30 {
-						seconds = 30
-					}
-					delay = time.Duration(seconds) * time.Second
+					delay = time.Duration(min(seconds, 30)) * time.Second
 				}
 				if err := waitContext(ctx, delay); err != nil {
 					return nil, err
@@ -216,23 +210,14 @@ func chatContext(ctx context.Context, messages []LLMMessage, schemas []ToolSchem
 		if len(cr.Choices) == 0 {
 			return nil, fmt.Errorf("模型没有返回 choices")
 		}
+		recordUsage(ctx, cr.Usage.PromptTokens, cr.Usage.CompletionTokens)
 		if cr.Choices[0].FinishReason == "length" && len(cr.Choices[0].Message.ToolCalls) > 0 {
 			return nil, fmt.Errorf("模型输出被截断，工具参数不完整；请提高服务端输出限额")
 		}
 		if cr.Choices[0].FinishReason == "length" {
-			cr.Choices[0].Message.Content = textOf(cr.Choices[0].Message) + "\n\n模型输出达到服务端长度限制，本次回答可能不完整。"
+			cr.Choices[0].Message.Content = textOf(cr.Choices[0].Message) + "\n\n" + tr(ctxLang(ctx), "agent.truncated")
 		}
 		return &cr, nil
 	}
 	return nil, fmt.Errorf("模型请求重试失败: %v", lastErr)
-}
-func waitContext(ctx context.Context, delay time.Duration) error {
-	t := time.NewTimer(delay)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
 }

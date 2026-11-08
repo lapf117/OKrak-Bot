@@ -31,6 +31,8 @@
   "max_subagents": 4,
   "typing": true,
   "show_steps": false,
+  "language": "auto",
+  "timezone": "Asia/Shanghai",
   "friend_tools": "read",
   "skills_dir": "./skills",
   "auto_load_skills": true,

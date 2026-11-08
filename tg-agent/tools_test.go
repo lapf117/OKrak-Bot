@@ -159,7 +159,8 @@ func TestToolSchemasUseCapturedPolicyAndRestrictGitActions(t *testing.T) {
 			props := params["properties"].(map[string]interface{})
 			action := props["action"].(map[string]interface{})
 			choices := action["enum"].([]string)
-			if len(choices) != 4 || strings.Contains(strings.Join(choices, ","), "commit") {
+			joined := strings.Join(choices, ",")
+			if len(choices) != len(gitReadActions) || strings.Contains(joined, "commit") || strings.Contains(joined, "add") {
 				t.Fatalf("unexpected git actions: %v", choices)
 			}
 		}

@@ -1,3 +1,18 @@
+# 2.1.0 验证记录
+
+验证日期：2026-11-08。环境：Linux amd64，Go 1.24.7。
+
+| 检查 | 结果 |
+| --- | --- |
+| `gofmt -l *.go` | 无待格式化文件 |
+| `go vet ./...` | 通过 |
+| `go test -race -count=1 ./...` | 通过（含新增格式化、计划、记忆、定时、审批、双语完整性测试） |
+| `CGO_ENABLED=0 go build -trimpath` | 通过 |
+
+未使用真实 Telegram token、模型 API key 或 SSH 主机；HTML 渲染与 Bot API 交互通过本地模拟验证。
+
+---
+
 # 交付验证记录
 
 验证日期：2026-11-08。环境：Linux amd64，Go 1.27.3；项目最低 Go 版本为 1.24，无第三方 Go 模块依赖。

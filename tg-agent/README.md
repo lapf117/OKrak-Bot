@@ -1,4 +1,6 @@
-# 大肥鱼 Telegram Agent 2.0
+# 大肥鱼 Telegram Agent 2.1
+
+> English: a bilingual (中文/English) Telegram AI agent in pure Go. Send a task; it plans, calls tools with a stated intent for each step, shows live progress, and replies in formatted Markdown. Switch language with `/lang en`.
 
 一个用 Go 标准库实现的 Telegram AI 工作助手。直接发送任务，即可搜索资料、读写代码、执行命令、维护计划并调用子智能体。主菜单保留常用入口，模型、执行策略、工作区、自动化与权限管理放在二级设置中。
 
@@ -43,6 +45,8 @@ export LLM_API_KEY='你的模型 API key'
 | `/continue` | 重新执行上一个任务；可能重复之前产生的操作 |
 | `/file 路径` | 取回工作区、上传目录或执行记录内的文件，管理员可用 |
 | `/health` | 模型、执行后端与资源自检，管理员可用 |
+
+新增：`/lang zh|en|auto` 切换语言，`/memory` 长期备忘，`/export` 导出对话，`/steps on|off` 进度详情，`/status` 运行状态。
 
 兼容原有 `/model`、`/provider`、`/effort`、`/system`、`/persona`、`/ws`、`/cmd`、`/cron`、`/admin`、`/friend`、`/ban`。机器人菜单只注册六个常用命令。`/think` 展示最近的可见答复摘要。
 
@@ -117,7 +121,7 @@ SSH 后端只从机器人主机的 `skills_dir` 加载技能；需要使用远�
 
 ## 工具与任务可靠性
 
-20 个工具：命令、文件分页、精确编辑、项目地图、搜索、Git、撤销、任务清单、网络检测、网页检索、技能和子智能体。工具按依赖顺序执行。读写与撤销使用独立备份，备份失败会中止写入；精确编辑拒绝截断的原文。子任务继承用户、目录、执行策略、取消信号和总预算，不会提升为主人。
+22 个工具（每次调用都需填写 intent 用途说明）：plan 计划、memory 记忆、schedule 定时、send_file 发送文件，以及命令、文件分页、精确编辑、项目地图、搜索、Git、撤销、任务清单、网络检测、网页检索、技能和子智能体。工具按依赖顺序执行。读写与撤销使用独立备份，备份失败会中止写入；精确编辑拒绝截断的原文。子任务继承用户、目录、执行策略、取消信号和总预算，不会提升为主人。
 
 上下文按完整用户轮次裁剪，过长时压缩为交接摘要。私聊历史保存到 `sessions/`，重启后按需恢复。达到执行预算会返回未完成状态与下一步；错误、取消、成功都会记录。任务清单按任务隔离。
 
@@ -137,6 +141,10 @@ SSH 后端只从机器人主机的 `skills_dir` 加载技能；需要使用远�
 ## 定时任务、快捷指令与 SSH
 
 ```text
+/cron add daily 09:00 汇总服务器状态
+/cron add weekdays 18:00 检查未提交改动
+/cron add in 45m 提醒我开会
+/cron pause 1 | resume 1 | run 1 | del 1
 /cmd add review 检查当前项目的未提交改动并给出问题
 /cmd review
 /cron add 30m 检查服务状态并报告异常

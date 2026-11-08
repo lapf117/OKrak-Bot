@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
+	_ "time/tzdata" // daily schedules work in minimal containers without zoneinfo
 )
 
 type Provider struct {
@@ -18,30 +20,34 @@ type Provider struct {
 	Models       []string `json:"models"`
 	DefaultModel string   `json:"default_model"`
 }
+
 type SSHConf struct {
 	Host    string `json:"host"`
 	Port    int    `json:"port"`
 	User    string `json:"user"`
 	KeyPath string `json:"key_path"`
 }
+
+type ASRConf struct {
+	BaseURL string `json:"base_url"`
+	APIKey  string `json:"api_key"`
+	Model   string `json:"model"`
+}
+
 type Config struct {
-	Token           string     `json:"token"`
-	OwnerID         int64      `json:"owner_id"`
-	Admins          []int64    `json:"admins"`
-	Friends         []int64    `json:"friends"`
-	Banned          []int64    `json:"banned"`
-	Provider        []Provider `json:"providers"`
-	ProviderName    string     `json:"provider_name"`
-	Model           string     `json:"model"`
-	SystemPrompt    string     `json:"system_prompt"`
-	Persona         string     `json:"persona"`
-	ReasoningEffort string     `json:"reasoning_effort"`
-	ShowReasoning   bool       `json:"show_reasoning"`
-	ASR             struct {
-		BaseURL string `json:"base_url"`
-		APIKey  string `json:"api_key"`
-		Model   string `json:"model"`
-	} `json:"asr"`
+	Token                  string        `json:"token"`
+	OwnerID                int64         `json:"owner_id"`
+	Admins                 []int64       `json:"admins"`
+	Friends                []int64       `json:"friends"`
+	Banned                 []int64       `json:"banned"`
+	Provider               []Provider    `json:"providers"`
+	ProviderName           string        `json:"provider_name"`
+	Model                  string        `json:"model"`
+	SystemPrompt           string        `json:"system_prompt"`
+	Persona                string        `json:"persona"`
+	ReasoningEffort        string        `json:"reasoning_effort"`
+	ShowReasoning          bool          `json:"show_reasoning"`
+	ASR                    ASRConf       `json:"asr"`
 	SkillsDir              string        `json:"skills_dir"`
 	Workspace              string        `json:"workspace"`
 	Backend                string        `json:"backend"`
@@ -66,12 +72,16 @@ type Config struct {
 	AutoFetchSkills        bool          `json:"auto_fetch_skills"`
 	SkillSources           []SkillSource `json:"skill_sources"`
 	SkillAllowedHosts      []string      `json:"skill_allowed_hosts"`
+	Language               string        `json:"language"` // auto | zh | en
+	Timezone               string        `json:"timezone"` // IANA name for daily schedules; empty = host local
 }
 
 var (
 	cfg     Config // Raw configuration. Only access under cfgMu; use snapshots elsewhere.
 	cfgMu   sync.RWMutex
 	baseDir string
+
+	configUpdateMu sync.Mutex
 )
 
 func configPath() string {
@@ -96,6 +106,7 @@ func cloneConfig(c Config) Config {
 	c.SkillAllowedHosts = append([]string(nil), c.SkillAllowedHosts...)
 	return c
 }
+
 func resolveSecret(v string) string {
 	if strings.HasPrefix(v, "env:") {
 		return os.Getenv(strings.TrimPrefix(v, "env:"))
@@ -105,6 +116,8 @@ func resolveSecret(v string) string {
 	}
 	return v
 }
+
+// configSnapshot returns an independent copy with secrets resolved.
 func configSnapshot() Config {
 	cfgMu.RLock()
 	c := cloneConfig(cfg)
@@ -119,6 +132,7 @@ func configSnapshot() Config {
 	c.ASR.APIKey = resolveSecret(c.ASR.APIKey)
 	return c
 }
+
 func normalizeConfig(c *Config) {
 	if c.Workspace == "" {
 		c.Workspace = filepath.Join(baseDir, "workspace")
@@ -132,11 +146,18 @@ func normalizeConfig(c *Config) {
 	if !filepath.IsAbs(c.SkillsDir) {
 		c.SkillsDir = filepath.Join(baseDir, c.SkillsDir)
 	}
-	if c.MaxSteps <= 0 {
-		c.MaxSteps = 40
+	defaults := []struct {
+		field *int
+		value int
+	}{
+		{&c.MaxSteps, 40}, {&c.MaxHistory, 30}, {&c.ApprovalTimeoutSeconds, 300},
+		{&c.CommandTimeoutSeconds, 120}, {&c.TaskTimeoutSeconds, 1800},
+		{&c.MaxToolOutput, 24000}, {&c.MaxSubagents, 4},
 	}
-	if c.MaxHistory <= 0 {
-		c.MaxHistory = 30
+	for _, d := range defaults {
+		if *d.field <= 0 {
+			*d.field = d.value
+		}
 	}
 	if c.Backend == "" {
 		c.Backend = "local"
@@ -147,20 +168,8 @@ func normalizeConfig(c *Config) {
 	if c.ApprovalMode == "" {
 		c.ApprovalMode = "manual"
 	}
-	if c.ApprovalTimeoutSeconds <= 0 {
-		c.ApprovalTimeoutSeconds = 300
-	}
-	if c.CommandTimeoutSeconds <= 0 {
-		c.CommandTimeoutSeconds = 120
-	}
-	if c.TaskTimeoutSeconds <= 0 {
-		c.TaskTimeoutSeconds = 1800
-	}
-	if c.MaxToolOutput <= 0 {
-		c.MaxToolOutput = 24000
-	}
-	if c.MaxSubagents <= 0 {
-		c.MaxSubagents = 4
+	if c.Language == "" {
+		c.Language = "auto"
 	}
 	if c.SSH.Port == 0 {
 		c.SSH.Port = 22
@@ -180,6 +189,7 @@ func normalizeConfig(c *Config) {
 		}
 	}
 }
+
 func validateConfig(c Config) error {
 	if c.OwnerID <= 0 {
 		return fmt.Errorf("owner_id 必须是正整数，可先通过 BotFather/Telegram 查询自己的用户 ID")
@@ -197,6 +207,19 @@ func validateConfig(c Config) error {
 	}
 	if c.FriendTools != "read" && c.FriendTools != "all" {
 		return fmt.Errorf("friend_tools 必须为 read 或 all")
+	}
+	switch c.Language {
+	case "", "auto", langZH, langEN:
+	default:
+		return fmt.Errorf("language 必须为 auto、zh 或 en")
+	}
+	if c.Timezone != "" {
+		if _, err := time.LoadLocation(c.Timezone); err != nil {
+			return fmt.Errorf("timezone 无效: %s", c.Timezone)
+		}
+	}
+	if !validEffort(c.ReasoningEffort) {
+		return fmt.Errorf("reasoning_effort 只能是小写字母，例如 low、medium、high")
 	}
 	if c.MaxSteps < 1 || c.MaxSteps > 200 || c.MaxHistory < 1 || c.MaxHistory > 200 {
 		return fmt.Errorf("max_steps/max_history 必须在 1..200")
@@ -249,6 +272,21 @@ func validateConfig(c Config) error {
 	}
 	return nil
 }
+
+// validEffort accepts provider-specific effort names such as low/high/xhigh;
+// an empty value omits the parameter entirely.
+func validEffort(v string) bool {
+	if len(v) > 16 {
+		return false
+	}
+	for _, r := range v {
+		if r < 'a' || r > 'z' {
+			return false
+		}
+	}
+	return true
+}
+
 func loadConfig() error {
 	b, e := os.ReadFile(configPath())
 	if e != nil {
@@ -273,13 +311,14 @@ func loadConfig() error {
 	return nil
 }
 
-// Keep environment references when a settings form saves an effective snapshot.
+// preserveSecret keeps environment references when a settings form saves an effective snapshot.
 func preserveSecret(old, next string) string {
 	if (strings.HasPrefix(old, "env:") || strings.HasPrefix(old, "${")) && resolveSecret(old) == next {
 		return old
 	}
 	return next
 }
+
 func saveConfig(next ...Config) error {
 	cfgMu.Lock()
 	defer cfgMu.Unlock()
@@ -313,8 +352,9 @@ func saveConfig(next ...Config) error {
 	cfg = c
 	return nil
 }
+
+// updateConfig applies fn to a fresh snapshot and saves it atomically.
 func updateConfig(fn func(*Config)) error {
-	// UI dispatch serializes interactive mutations; dedicated callers use this lock.
 	configUpdateMu.Lock()
 	defer configUpdateMu.Unlock()
 	c := configSnapshot()
@@ -322,60 +362,11 @@ func updateConfig(fn func(*Config)) error {
 	return saveConfig(c)
 }
 
-var configUpdateMu sync.Mutex
-
-func currentProvider() *Provider { c := configSnapshot(); return providerFor(c) }
-func providerFor(c Config) *Provider {
-	for _, p := range c.Provider {
-		if p.Name == c.ProviderName {
-			q := p
-			return &q
+func scheduleLocation(c Config) *time.Location {
+	if c.Timezone != "" {
+		if loc, err := time.LoadLocation(c.Timezone); err == nil {
+			return loc
 		}
 	}
-	if len(c.Provider) > 0 {
-		p := c.Provider[0]
-		return &p
-	}
-	return nil
-}
-func setProviderIn(c *Config, p Provider) {
-	for i := range c.Provider {
-		if c.Provider[i].Name == p.Name {
-			c.Provider[i] = p
-			return
-		}
-	}
-	c.Provider = append(c.Provider, p)
-}
-func setProvider(p Provider) { _ = updateConfig(func(c *Config) { setProviderIn(c, p) }) }
-func containsID(ids []int64, id int64) bool {
-	for _, v := range ids {
-		if v == id {
-			return true
-		}
-	}
-	return false
-}
-func isOwner(uid int64) bool { c := configSnapshot(); return c.OwnerID > 0 && uid == c.OwnerID }
-func isAdmin(uid int64) bool {
-	c := configSnapshot()
-	return c.OwnerID > 0 && uid == c.OwnerID || containsID(c.Admins, uid)
-}
-func isFriend(uid int64) bool { return containsID(configSnapshot().Friends, uid) }
-func isBanned(uid int64) bool { return containsID(configSnapshot().Banned, uid) }
-func allowed(uid int64) bool {
-	c := configSnapshot()
-	return !containsID(c.Banned, uid) && (c.OwnerID > 0 && uid == c.OwnerID || containsID(c.Admins, uid) || containsID(c.Friends, uid))
-}
-func roleName(uid int64) string {
-	if isOwner(uid) {
-		return "主人"
-	}
-	if isAdmin(uid) {
-		return "管理员"
-	}
-	if isFriend(uid) {
-		return "朋友"
-	}
-	return "访客"
+	return time.Local
 }
