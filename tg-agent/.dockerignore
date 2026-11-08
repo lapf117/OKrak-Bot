@@ -1,0 +1,15 @@
+.git
+.env
+config.json
+agent.log
+cron.json
+runs
+sessions
+uploads
+workspace
+data
+dist
+*.tar.gz
+*.zip
+
+updates.offset

@@ -1,0 +1,24 @@
+[Unit]
+Description=Telegram AI Agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=tgagent
+Group=tgagent
+WorkingDirectory=/opt/tg-agent
+EnvironmentFile=/etc/tg-agent.env
+ExecStart=/opt/tg-agent/tg-agent --config /opt/tg-agent/config.json
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/tg-agent
+
+[Install]
+WantedBy=multi-user.target
