@@ -15,7 +15,7 @@ import (
 )
 
 var configFile string
-var version = "2.1.0"
+var version = "2.1.1"
 
 // botCommands is the Telegram command menu, registered in both languages.
 var botCommands = []struct{ name, zh, en string }{

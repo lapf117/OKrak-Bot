@@ -1,5 +1,7 @@
 # 大肥鱼 Telegram Agent 2.1
 
+> 2.1.1：纯文本界面（无表情），对话时无停止按钮（用 /stop 停止），普通用户只见使用、模型与推理选择，其余设置在管理员菜单与 config.json。
+
 > English: a bilingual (中文/English) Telegram AI agent in pure Go. Send a task; it plans, calls tools with a stated intent for each step, shows live progress, and replies in formatted Markdown. Switch language with `/lang en`.
 
 一个用 Go 标准库实现的 Telegram AI 工作助手。直接发送任务，即可搜索资料、读写代码、执行命令、维护计划并调用子智能体。主菜单保留常用入口，模型、执行策略、工作区、自动化与权限管理放在二级设置中。

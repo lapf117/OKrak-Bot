@@ -15,7 +15,7 @@ func TestMarkdownToHTMLCoversCommonBlocks(t *testing.T) {
 		"<code>a&lt;b&gt;</code>",
 		`<a href="https://example.com/?a=1&amp;b=2">link</a>`,
 		"• item one",
-		"☑ done",
+		"[x] done",
 		"1. first",
 		"<blockquote>quoted <b>text</b></blockquote>",
 		`<pre><code class="language-go">fmt.Println("&lt;hi&gt;")</code></pre>`,
@@ -123,6 +123,41 @@ func TestLooksLikePath(t *testing.T) {
 	for _, s := range []string{"/menu", "/unknown", "/stop"} {
 		if looksLikePath(s) {
 			t.Errorf("%s should be treated as a command", s)
+		}
+	}
+}
+
+// TestUIHasNoEmoji guards the plain-text style: no pictographic emoji in the
+// main user-visible surfaces.
+func TestUIHasNoEmoji(t *testing.T) {
+	hasEmoji := func(s string) (rune, bool) {
+		for _, r := range s {
+			if r == 0xFE0F || (r >= 0x1F000 && r <= 0x1FFFF) ||
+				r == 0x2705 || r == 0x274C || r == 0x26A0 || r == 0x2699 || r == 0x23F0 ||
+				r == 0x23F3 || r == 0x23F9 || r == 0x1F6E1 {
+				return r, true
+			}
+		}
+		return 0, false
+	}
+	for key, v := range messages {
+		for _, s := range v {
+			if r, ok := hasEmoji(s); ok {
+				t.Errorf("message %q contains emoji %q: %s", key, string(r), s)
+			}
+		}
+	}
+	c := runtimeTestConfig(t)
+	uid := c.OwnerID
+	panel := newProgressPanel(langZH, true, "cron #1")
+	panel.apply(StepEvent{Tool: "bash", Detail: "ls", Intent: "看看"})
+	panel.apply(StepEvent{Tool: "bash", Done: true, Output: "a\nb"})
+	for name, s := range map[string]string{
+		"menu": menuText(uid), "help": helpBody(uid), "mode": executionSettingsText(langZH),
+		"panel": panel.render(), "final": panel.renderFinal("done"), "memory": memoryPanel(uid, langZH),
+	} {
+		if r, ok := hasEmoji(s); ok {
+			t.Errorf("%s surface contains emoji %q:\n%s", name, string(r), s)
 		}
 	}
 }

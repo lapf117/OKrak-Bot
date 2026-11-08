@@ -72,7 +72,7 @@ func skillsPanel(lang string) string {
 	c := configSnapshot()
 	sk, err := loadSkillIndex()
 	var b strings.Builder
-	b.WriteString("🧩 <b>" + esc(tr(lang, "skills.title", len(sk))) + "</b>\n\n")
+	b.WriteString("<b>" + esc(tr(lang, "skills.title", len(sk))) + "</b>\n\n")
 	switch {
 	case err != nil:
 		b.WriteString(esc(tr(lang, "skills.error", err.Error())) + "\n")
@@ -132,7 +132,7 @@ func handleSkillsCommand(chatID, uid int64, rest string) bool {
 			}
 			text, err := installSkill(ctx, c, fields[1])
 			if err != nil {
-				text = "⚠️ " + err.Error()
+				text = err.Error()
 			}
 			sendMessage(chatID, text, nil)
 			return true
@@ -141,7 +141,7 @@ func handleSkillsCommand(chatID, uid int64, rest string) bool {
 		for _, source := range c.SkillSources {
 			text, err := installSkill(ctx, c, source.Name)
 			if err != nil {
-				text = "⚠️ " + source.Name + ": " + err.Error()
+				text = source.Name + ": " + err.Error()
 			}
 			b.WriteString(text + "\n")
 		}

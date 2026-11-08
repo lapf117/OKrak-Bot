@@ -145,9 +145,9 @@ func renderListLine(line string) (string, bool) {
 		markText := "• "
 		switch {
 		case strings.HasPrefix(body, "[ ] "):
-			markText, body = "☐ ", body[4:]
+			markText, body = "[ ] ", body[4:]
 		case strings.HasPrefix(body, "[x] "), strings.HasPrefix(body, "[X] "):
-			markText, body = "☑ ", body[4:]
+			markText, body = "[x] ", body[4:]
 		}
 		return indent + markText + renderInline(body), true
 	}

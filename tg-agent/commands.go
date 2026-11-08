@@ -32,7 +32,7 @@ func handleCommand(chatID, uid int64, t, low string) bool {
 			return true
 		}
 		resetHistory(chatID)
-		sendUI(chatID, "🆕 "+esc(tr(lang, "chat.reset"))+"\n\n"+menuText(uid), mainMenu(uid))
+		sendUI(chatID, esc(tr(lang, "chat.reset"))+"\n\n"+menuText(uid), mainMenu(uid))
 	case "/stop":
 		if stopTask(chatID) {
 			sendMessage(chatID, tr(lang, "task.stop_requested"), nil)
@@ -74,7 +74,7 @@ func handleCommand(chatID, uid int64, t, low string) bool {
 			sendMessage(chatID, tr(lang, "err.admin_only"), nil)
 			return true
 		}
-		sendUI(chatID, "⚙️ <b>"+esc(tr(lang, "settings.title"))+"</b>\n\n"+esc(tr(lang, "settings.hint")), adminMenu(uid))
+		sendUI(chatID, "<b>"+esc(tr(lang, "settings.title"))+"</b>\n\n"+esc(tr(lang, "settings.hint")), adminMenu(uid))
 	case "/health":
 		if !isAdmin(uid) {
 			sendMessage(chatID, tr(lang, "err.admin_only"), nil)
@@ -142,7 +142,7 @@ func handleLangCommand(chatID, uid int64, rest string) {
 		sendMessage(chatID, tr(langFor(uid), "err.save", err.Error()), nil)
 		return
 	}
-	sendUI(chatID, "🌐 "+esc(tr(langFor(uid), "lang.changed")), mainMenu(uid))
+	sendUI(chatID, esc(tr(langFor(uid), "lang.changed")), mainMenu(uid))
 }
 
 func handleStepsCommand(chatID, uid int64, rest string) {
@@ -246,7 +246,7 @@ func handleQuickCmd(chatID, uid int64, rest string) bool {
 	c := configSnapshot()
 	f := strings.Fields(rest)
 	if len(f) == 0 {
-		sendMessage(chatID, "⚡ "+tr(lang, "quick.title")+"\n\n"+quickList(lang)+"\n"+tr(lang, "quick.help"), nil)
+		sendMessage(chatID, tr(lang, "quick.title")+"\n\n"+quickList(lang)+"\n"+tr(lang, "quick.help"), nil)
 		return true
 	}
 	switch f[0] {
@@ -324,13 +324,13 @@ func handleCron(chatID, uid int64, rest string) bool {
 	case "add":
 		spec, used, err := parseScheduleFields(f[1:], time.Now(), scheduleLocation(configSnapshot()))
 		if err != nil {
-			sendMessage(chatID, "⚠️ "+err.Error()+"\n\n"+cronUsage(lang), nil)
+			sendMessage(chatID, err.Error()+"\n\n"+cronUsage(lang), nil)
 			return true
 		}
 		prompt := argsAfter(rest, 1+used)
 		job, err := addCronJob(chatID, uid, spec, prompt, "user")
 		if err != nil {
-			sendMessage(chatID, "⚠️ "+err.Error(), nil)
+			sendMessage(chatID, err.Error(), nil)
 			return true
 		}
 		sendMessage(chatID, tr(lang, "cron.created", job.ID, spec.describe(lang), formatRunTime(job.NextRun), oneLine(prompt, 60)), nil)
@@ -356,7 +356,7 @@ func handleCron(chatID, uid int64, rest string) bool {
 			err = runCronNow(id)
 		}
 		if err != nil {
-			sendMessage(chatID, "⚠️ "+err.Error(), nil)
+			sendMessage(chatID, err.Error(), nil)
 			return true
 		}
 		sendMessage(chatID, tr(lang, "cron.updated", id), nil)
@@ -371,7 +371,7 @@ func cronPanel(lang string) string {
 	if list == "" {
 		list = tr(lang, "cron.empty")
 	}
-	return "⏰ <b>" + esc(tr(lang, "cron.title")) + "</b>\n\n" + esc(list) + "\n<i>" + esc(cronUsage(lang)) + "</i>"
+	return "<b>" + esc(tr(lang, "cron.title")) + "</b>\n\n" + esc(list) + "\n<i>" + esc(cronUsage(lang)) + "</i>"
 }
 
 func cronKeyboard(lang string) interface{} {
@@ -381,15 +381,15 @@ func cronKeyboard(lang string) interface{} {
 			break
 		}
 		id := strconv.Itoa(j.ID)
-		row := []Btn{btn("▶ #"+id, "cron:run:"+id)}
+		row := []Btn{btn("#"+id, "cron:run:"+id)}
 		switch {
 		case j.Done:
 		case j.Enabled:
-			row = append(row, btn("⏸ #"+id, "cron:pause:"+id))
+			row = append(row, btn("#"+id, "cron:pause:"+id))
 		default:
-			row = append(row, btn("▶️ "+tr(lang, "cron.resume")+" #"+id, "cron:resume:"+id))
+			row = append(row, btn(tr(lang, "cron.resume")+" #"+id, "cron:resume:"+id))
 		}
-		rows = append(rows, append(row, btn("🗑 #"+id, "cron:del:"+id)))
+		rows = append(rows, append(row, btn("#"+id, "cron:del:"+id)))
 	}
 	rows = append(rows, []Btn{btn(tr(lang, "btn.refresh"), "act:cron"), btn(tr(lang, "btn.back"), "nav:root")})
 	return keyboard(rows)

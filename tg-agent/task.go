@@ -15,7 +15,7 @@ import (
 const longReplyRunes = 12000
 
 type taskOptions struct {
-	Origin string // shown in the panel, e.g. "⏰ #3" for scheduled runs
+	Origin string // shown in the panel, e.g. "#3" for scheduled runs
 	Quiet  bool   // do not message the user when the chat is busy
 }
 
@@ -25,6 +25,14 @@ type lastTask struct {
 }
 
 var lastTasks sync.Map // chatID -> lastTask
+var lastUsage sync.Map // chatID -> int64 tokens of the most recent task
+
+func lastUsageTokens(chatID int64) int64 {
+	if v, ok := lastUsage.Load(chatID); ok {
+		return v.(int64)
+	}
+	return 0
+}
 
 func runUserTask(chatID, uid int64, text string, images []string) {
 	runUserTaskOpts(chatID, uid, text, images, taskOptions{})
@@ -50,8 +58,8 @@ func runUserTaskOpts(chatID, uid int64, text string, images []string, opts taskO
 	lastTasks.Store(chatID, lastTask{Text: text, Images: images})
 
 	panel := newProgressPanel(lang, stepsDetailed(uid, c), opts.Origin)
-	stopKB := keyboard([][]Btn{{btn(tr(lang, "btn.stop"), "act:stop")}})
-	msgID := sendHTML(ctx, chatID, panel.render(), "", stopKB)
+	// The live panel carries no buttons: to stop, the user sends /stop.
+	msgID := sendHTML(ctx, chatID, panel.render(), "", nil)
 
 	var renderMu sync.Mutex
 	var lastEdit time.Time
@@ -72,7 +80,7 @@ func runUserTaskOpts(chatID, uid int64, text string, images []string, opts taskO
 		if body == lastBody {
 			return
 		}
-		if editHTML(ctx, chatID, msgID, body, "", stopKB) {
+		if editHTML(ctx, chatID, msgID, body, "", nil) {
 			lastBody = body
 		}
 		lastEdit = time.Now()
@@ -110,6 +118,9 @@ func runUserTaskOpts(chatID, uid int64, text string, images []string, opts taskO
 	renderMu.Unlock()
 
 	tools, tokens := taskUsage(ctx)
+	if tokens > 0 {
+		lastUsage.Store(chatID, tokens)
+	}
 	trace := panel.snapshot()
 	finalCtx, cancelFinal := context.WithTimeout(telegramContext, 30*time.Second)
 	defer cancelFinal()
@@ -121,16 +132,16 @@ func runUserTaskOpts(chatID, uid int64, text string, images []string, opts taskO
 			reason = tr(lang, "task.timeout")
 		}
 		writeRunLog(chatID, redactExecutionSecrets(ctx, text), trace, reason, dur, tools, tokens)
-		if !editHTML(finalCtx, chatID, msgID, panel.renderFinal("⏹", reason), "", menuKB) {
-			sendUI(chatID, "⏹ "+esc(reason), menuKB)
+		if !editHTML(finalCtx, chatID, msgID, panel.renderFinal(reason), "", menuKB) {
+			sendUI(chatID, esc(reason), menuKB)
 		}
 		return true
 	}
 	if err != nil {
 		msg := redactExecutionSecrets(ctx, err.Error())
 		writeRunLog(chatID, redactExecutionSecrets(ctx, text), trace, "执行失败："+msg, dur, tools, tokens)
-		editHTML(finalCtx, chatID, msgID, panel.renderFinal("❌", tr(lang, "task.failed")), "", nil)
-		sendHTML(finalCtx, chatID, "❌ <b>"+esc(tr(lang, "task.failed"))+"</b>\n<pre>"+esc(short(msg, 1500))+"</pre>", "", menuKB)
+		editHTML(finalCtx, chatID, msgID, panel.renderFinal(tr(lang, "task.failed")), "", nil)
+		sendHTML(finalCtx, chatID, "<b>"+esc(tr(lang, "task.failed"))+"</b>\n<pre>"+esc(short(msg, 1500))+"</pre>", "", menuKB)
 		return true
 	}
 
@@ -139,14 +150,14 @@ func runUserTaskOpts(chatID, uid int64, text string, images []string, opts taskO
 		out = tr(lang, "task.no_output")
 	}
 	runPath := writeRunLog(chatID, redactExecutionSecrets(ctx, text), trace, out, dur, tools, tokens)
-	editHTML(finalCtx, chatID, msgID, panel.renderFinal("✅", tr(lang, "task.done")), "", nil)
+	editHTML(finalCtx, chatID, msgID, panel.renderFinal(tr(lang, "task.done")), "", nil)
 
-	footer := "⏱ " + humanDuration(dur)
+	footer := humanDuration(dur)
 	if tools > 0 {
-		footer += " · 🛠 " + fmt.Sprint(tools)
+		footer += " · " + fmt.Sprint(tools) + " tools"
 	}
 	if tokens > 0 {
-		footer += " · 🧮 " + humanTokens(tokens) + " tokens"
+		footer += " · " + humanTokens(tokens) + " tokens"
 	}
 	answer := out
 	var attachment []byte
@@ -207,8 +218,7 @@ func writeRunLog(chatID int64, task string, trace []progressAction, final string
 	fmt.Fprintf(&b, "- 时间：%s\n- 耗时：%s\n- 工具调用：%d\n- Tokens：%d\n\n", now.Format("2006-01-02 15:04:05"), humanDuration(dur), tools, tokens)
 	b.WriteString("## 任务\n\n" + task + "\n\n")
 	for i, t := range trace {
-		_, label := toolLabel(langZH, t.Tool)
-		fmt.Fprintf(&b, "## %d. %s · `%s`\n\n", i+1, label, t.Tool)
+		fmt.Fprintf(&b, "## %d. %s · `%s`\n\n", i+1, toolLabel(langZH, t.Tool), t.Tool)
 		if t.Intent != "" {
 			b.WriteString("> " + t.Intent + "\n\n")
 		}

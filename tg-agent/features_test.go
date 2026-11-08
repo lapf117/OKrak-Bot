@@ -277,7 +277,7 @@ func TestScheduleToolCreatesListsAndCancels(t *testing.T) {
 		t.Fatal("trailing words in a rule were accepted")
 	}
 	list, _ := toolScheduleContext(ctx, map[string]interface{}{"action": "list"})
-	if !strings.Contains(list, "汇总服务器状态") || !strings.Contains(list, "🤖") {
+	if !strings.Contains(list, "汇总服务器状态") || !strings.Contains(list, "自动创建") {
 		t.Fatalf("list: %s", list)
 	}
 	other := taskContext(c, c.OwnerID)
@@ -381,12 +381,15 @@ func TestAgentReportsNotesAndIntents(t *testing.T) {
 		panel.apply(ev)
 	}
 	html := panel.render()
-	for _, want := range []string{"确认工作区内容", "查看目录", "📂", "先看看目录结构"} {
+	for _, want := range []string{"确认工作区内容", "查看目录", "列出目录", "先看看目录结构"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("panel lacks %q:\n%s", want, html)
 		}
 	}
-	if final := panel.renderFinal("✅", "已完成"); !strings.Contains(final, "×1") {
+	if strings.ContainsAny(html, "📂🤖🔧✅") {
+		t.Errorf("panel still contains emoji:\n%s", html)
+	}
+	if final := panel.renderFinal("已完成"); !strings.Contains(final, "×1") {
 		t.Errorf("final summary lacks tool histogram: %s", final)
 	}
 }

@@ -91,7 +91,7 @@ func authorizeTool(ctx context.Context, name, argsJSON string) error {
 
 // approvalCard renders the full arguments so the user sees exactly what runs.
 func approvalCard(lang, name, argsJSON string, c Config, digest []byte, visibleArgs string) (string, string) {
-	icon, label := toolLabel(lang, name)
+	label := toolLabel(lang, name)
 	intent := toolIntent(argsJSON)
 	pretty := visibleArgs
 	var buf bytes.Buffer
@@ -101,14 +101,14 @@ func approvalCard(lang, name, argsJSON string, c Config, digest []byte, visibleA
 		pretty = buf.String()
 	}
 	var h, p strings.Builder
-	fmt.Fprintf(&h, "🔐 <b>%s</b>\n\n%s <b>%s</b> · <code>%s</code>\n", esc(tr(lang, "approval.title")), icon, esc(label), esc(name))
-	fmt.Fprintf(&p, "🔐 %s\n\n%s %s · %s\n", tr(lang, "approval.title"), icon, label, name)
+	fmt.Fprintf(&h, "<b>%s</b>\n\n<b>%s</b> · <code>%s</code>\n", esc(tr(lang, "approval.title")), esc(label), esc(name))
+	fmt.Fprintf(&p, "%s\n\n%s · %s\n", tr(lang, "approval.title"), label, name)
 	if intent != "" {
 		fmt.Fprintf(&h, "↳ <i>%s</i>\n", esc(intent))
 		fmt.Fprintf(&p, "↳ %s\n", intent)
 	}
-	fmt.Fprintf(&h, "📁 <code>%s</code> (%s)\n\n<pre><code class=\"language-json\">%s</code></pre>\n", esc(c.Workspace), esc(c.Backend), esc(pretty))
-	fmt.Fprintf(&p, "📁 %s (%s)\n\n%s\n", c.Workspace, c.Backend, pretty)
+	fmt.Fprintf(&h, "<code>%s</code> (%s)\n\n<pre><code class=\"language-json\">%s</code></pre>\n", esc(c.Workspace), esc(c.Backend), esc(pretty))
+	fmt.Fprintf(&p, "%s (%s)\n\n%s\n", c.Workspace, c.Backend, pretty)
 	note := tr(lang, "approval.note", fmt.Sprintf("%x", digest[:8]))
 	fmt.Fprintf(&h, "<i>%s</i>", esc(note))
 	p.WriteString(note)
@@ -171,10 +171,9 @@ func requestToolApproval(ctx context.Context, name, argsJSON string) error {
 		status = tr(lang, "approval.timeout")
 		err = fmt.Errorf("审批等待超时")
 	}
-	icon, label := toolLabel(lang, name)
 	statusCtx, statusCancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer statusCancel()
-	summary := fmt.Sprintf("%s · %s %s", status, icon, label)
+	summary := fmt.Sprintf("%s · %s", status, toolLabel(lang, name))
 	if detail := summarizeArgs(name, argsJSON); detail != "" {
 		summary += " · " + oneLine(redactExecutionSecrets(ctx, detail), 120)
 	}

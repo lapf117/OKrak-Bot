@@ -17,7 +17,7 @@ func handleAdminCommand(chatID, uid int64, cmd, rest string) bool {
 	c := configSnapshot()
 	if cmd == "/model" && rest == "" {
 		var b strings.Builder
-		fmt.Fprintf(&b, "🤖 %s: %s\n", tr(lang, "menu.model"), c.Model)
+		fmt.Fprintf(&b, "%s: %s\n", tr(lang, "menu.model"), c.Model)
 		if p := currentProvider(); p != nil && len(p.Models) > 0 {
 			b.WriteString("\n" + tr(lang, "model.available") + "\n")
 			for _, m := range p.Models {

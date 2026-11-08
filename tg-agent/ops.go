@@ -40,10 +40,10 @@ func recentRuns(n int) []runEntry {
 func listRunsHTML(lang string, n int) string {
 	items := recentRuns(n)
 	if len(items) == 0 {
-		return "📜 " + esc(tr(lang, "runs.empty"))
+		return esc(tr(lang, "runs.empty"))
 	}
 	var b strings.Builder
-	b.WriteString("📜 <b>" + esc(tr(lang, "runs.title", len(items))) + "</b>\n\n")
+	b.WriteString("<b>" + esc(tr(lang, "runs.title", len(items))) + "</b>\n\n")
 	for i, it := range items {
 		fmt.Fprintf(&b, "%d. %s · %s KB\n", i+1, it.t.Format("01-02 15:04"), fmt.Sprintf("%.1f", float64(it.size)/1024))
 	}
@@ -56,7 +56,7 @@ func listRuns(n int) string { return stripTags(listRunsHTML(langZH, n)) }
 func runsKeyboard(lang string, n int) interface{} {
 	var row []Btn
 	for i, it := range recentRuns(n) {
-		row = append(row, btn(fmt.Sprintf("📄 %d", i+1), "runlog:"+it.name))
+		row = append(row, btn(fmt.Sprintf("%d", i+1), "runlog:"+it.name))
 	}
 	rows := [][]Btn{}
 	if len(row) > 0 {
@@ -71,11 +71,11 @@ func runsKeyboard(lang string, n int) interface{} {
 func healthCheck(lang string) string {
 	c := configSnapshot()
 	var b strings.Builder
-	b.WriteString("🩺 <b>" + esc(tr(lang, "health.title")) + "</b>\n\n")
+	b.WriteString("<b>" + esc(tr(lang, "health.title")) + "</b>\n\n")
 	line := func(ok bool, label, detail string) {
-		icon := "✅"
+		icon := ""
 		if !ok {
-			icon = "❌"
+			icon = ""
 		}
 		fmt.Fprintf(&b, "%s <b>%s</b> %s\n", icon, esc(label), esc(detail))
 	}
@@ -94,11 +94,11 @@ func healthCheck(lang string) string {
 		line(true, tr(lang, "health.backend"), fmt.Sprintf("%dms · %s", time.Since(start).Milliseconds(), oneLine(strings.TrimPrefix(strings.TrimSpace(out), "backend_ok"), 60)))
 	}
 	if res, err := runShell("df -h . | tail -1 | awk '{print $5\" disk\"}'; free -m 2>/dev/null | awk 'NR==2{print $3\"M/\"$2\"M mem\"}'", 20*time.Second); err == nil {
-		fmt.Fprintf(&b, "💾 %s\n", esc(strings.Join(strings.Fields(strings.ReplaceAll(strings.TrimSpace(res), "\n", " · ")), " ")))
+		fmt.Fprintf(&b, "%s\n", esc(strings.Join(strings.Fields(strings.ReplaceAll(strings.TrimSpace(res), "\n", " · ")), " ")))
 	}
 	sk, _ := loadSkillIndex()
-	fmt.Fprintf(&b, "\n🛠 %s %d · 🧩 %s %d · ⏰ %s %d\n", esc(tr(lang, "health.tools")), len(allTools()), esc(tr(lang, "health.skills")), len(sk), esc(tr(lang, "health.jobs")), len(cronSnapshot()))
-	fmt.Fprintf(&b, "🤖 <code>%s</code> · %s %s · v%s", esc(c.Model), esc(tr(lang, "effort.title")), esc(effortLabel(lang, c.ReasoningEffort)), version)
+	fmt.Fprintf(&b, "\n%s %d · %s %d · %s %d\n", esc(tr(lang, "health.tools")), len(allTools()), esc(tr(lang, "health.skills")), len(sk), esc(tr(lang, "health.jobs")), len(cronSnapshot()))
+	fmt.Fprintf(&b, "<code>%s</code> · %s %s · v%s", esc(c.Model), esc(tr(lang, "effort.title")), esc(effortLabel(lang, c.ReasoningEffort)), version)
 	return b.String()
 }
 
@@ -141,7 +141,7 @@ func configOverview(lang string) string {
 	for _, r := range rows {
 		fmt.Fprintf(&b, "%-13s %s\n", r[0], r[1])
 	}
-	return "🧾 <b>" + esc(tr(lang, "config.title")) + "</b>\n<pre>" + esc(b.String()) + "</pre>"
+	return "<b>" + esc(tr(lang, "config.title")) + "</b>\n<pre>" + esc(b.String()) + "</pre>"
 }
 
 func onOff(lang string, v bool) string {
@@ -166,14 +166,13 @@ func exportConversation(chatID, uid int64) {
 	for _, m := range history {
 		switch m.Role {
 		case "user":
-			b.WriteString("## 🧑 " + tr(lang, "export.user") + "\n\n" + textOf(m) + "\n\n")
+			b.WriteString("## " + tr(lang, "export.user") + "\n\n" + textOf(m) + "\n\n")
 		case "assistant":
 			if t := strings.TrimSpace(textOf(m)); t != "" {
-				b.WriteString("## 🤖 " + tr(lang, "export.assistant") + "\n\n" + t + "\n\n")
+				b.WriteString("## " + tr(lang, "export.assistant") + "\n\n" + t + "\n\n")
 			}
 			for _, tc := range m.ToolCalls {
-				icon, label := toolLabel(lang, tc.Function.Name)
-				fmt.Fprintf(&b, "- %s %s `%s`\n", icon, label, oneLine(summarizeArgs(tc.Function.Name, tc.Function.Arguments), 120))
+				fmt.Fprintf(&b, "- %s `%s`\n", toolLabel(lang, tc.Function.Name), oneLine(summarizeArgs(tc.Function.Name, tc.Function.Arguments), 120))
 			}
 			if len(m.ToolCalls) > 0 {
 				b.WriteString("\n")

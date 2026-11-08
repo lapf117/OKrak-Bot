@@ -176,7 +176,7 @@ func handleMemoryCommand(chatID, uid int64, rest string) bool {
 		}
 		id, err := addMemory(uid, text)
 		if err != nil {
-			sendMessage(chatID, "⚠️ "+err.Error(), nil)
+			sendMessage(chatID, err.Error(), nil)
 			return true
 		}
 		sendMessage(chatID, tr(lang, "memory.added", id), nil)
@@ -202,7 +202,7 @@ func handleMemoryCommand(chatID, uid int64, rest string) bool {
 func memoryPanel(uid int64, lang string) string {
 	items := loadMemory(uid)
 	var b strings.Builder
-	b.WriteString("🧠 <b>" + esc(tr(lang, "memory.title")) + "</b>\n\n")
+	b.WriteString("<b>" + esc(tr(lang, "memory.title")) + "</b>\n\n")
 	if len(items) == 0 {
 		b.WriteString(esc(tr(lang, "memory.empty")) + "\n")
 	} else {

@@ -436,22 +436,19 @@ func listCronText(lang string, chatID int64) string {
 		if chatID != 0 && j.ChatID != chatID {
 			continue
 		}
-		state := "✅"
+		state := tr(lang, "cron.on")
 		switch {
 		case j.Done:
-			state = "☑️"
+			state = tr(lang, "cron.done")
 		case !j.Enabled:
-			state = "⏸"
+			state = tr(lang, "cron.off")
 		}
-		fmt.Fprintf(&b, "%s #%d · %s · %s %s", state, j.ID, jobSpec(j).describe(lang), tr(lang, "cron.next"), formatRunTime(j.NextRun))
-		if j.Done {
-			b.WriteString(" · " + tr(lang, "cron.done"))
-		}
+		fmt.Fprintf(&b, "[%s] #%d · %s · %s %s", state, j.ID, jobSpec(j).describe(lang), tr(lang, "cron.next"), formatRunTime(j.NextRun))
 		if j.Runs > 0 {
 			b.WriteString(" · " + tr(lang, "cron.runs", j.Runs))
 		}
 		if j.Source == "agent" {
-			b.WriteString(" · 🤖")
+			b.WriteString(" · " + tr(lang, "cron.by_agent"))
 		}
 		fmt.Fprintf(&b, "\n   %s\n", oneLine(j.Prompt, 80))
 	}
@@ -529,7 +526,7 @@ func fireCron(job CronJob) {
 		logf("定时任务 #%d 创建者已无管理员权限，跳过", job.ID)
 		return
 	}
-	origin := fmt.Sprintf("⏰ #%d", job.ID)
+	origin := fmt.Sprintf("cron #%d", job.ID)
 	if !runUserTaskOpts(job.ChatID, job.UserID, job.Prompt, nil, taskOptions{Origin: origin, Quiet: true}) {
 		postponeCron(job.ID)
 	}
@@ -561,7 +558,7 @@ func runCronNow(id int) error {
 			if isBusy(j.ChatID) {
 				return fmt.Errorf("当前已有任务在运行")
 			}
-			go runUserTaskOpts(j.ChatID, j.UserID, j.Prompt, nil, taskOptions{Origin: fmt.Sprintf("⏰ #%d", j.ID)})
+			go runUserTaskOpts(j.ChatID, j.UserID, j.Prompt, nil, taskOptions{Origin: fmt.Sprintf("cron #%d", j.ID)})
 			return nil
 		}
 	}

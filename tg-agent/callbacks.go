@@ -71,7 +71,7 @@ func handleCallback(cb CallbackQuery) {
 		}
 		resetHistory(chatID)
 		toast = tr(lang, "chat.reset")
-		sendUI(chatID, "🆕 "+esc(tr(lang, "chat.reset"))+"\n\n"+menuText(uid), mainMenu(uid))
+		sendUI(chatID, esc(tr(lang, "chat.reset"))+"\n\n"+menuText(uid), mainMenu(uid))
 	case data == "act:stop":
 		// The dispatcher already cancelled the task; the panel updates itself.
 		toast = tr(lang, "task.stopping")
@@ -105,7 +105,7 @@ func handleCallback(cb CallbackQuery) {
 		_ = updatePrefs(uid, func(p *UserPrefs) { p.Steps = next })
 		toast = tr(lang, "steps."+next)
 		if admin {
-			editUI(chatID, msgID, "⚙️ <b>"+esc(tr(lang, "settings.title"))+"</b>\n\n"+esc(tr(lang, "settings.hint")), adminMenu(uid))
+			editUI(chatID, msgID, "<b>"+esc(tr(lang, "settings.title"))+"</b>\n\n"+esc(tr(lang, "settings.hint")), adminMenu(uid))
 		}
 	case data == "nav:skills":
 		editUI(chatID, msgID, skillsPanel(lang), backKB(lang, "nav:root"))
@@ -113,19 +113,19 @@ func handleCallback(cb CallbackQuery) {
 	// ---------- admin panels ----------
 	case data == "nav:admin", data == "nav:settings":
 		if needAdmin() {
-			editUI(chatID, msgID, "⚙️ <b>"+esc(tr(lang, "settings.title"))+"</b>\n\n"+esc(tr(lang, "settings.hint")), adminMenu(uid))
+			editUI(chatID, msgID, "<b>"+esc(tr(lang, "settings.title"))+"</b>\n\n"+esc(tr(lang, "settings.hint")), adminMenu(uid))
 		}
 	case data == "nav:advanced":
 		if needAdmin() {
-			editUI(chatID, msgID, "🔧 <b>"+esc(tr(lang, "settings.advanced"))+"</b>", advancedMenu(uid))
+			editUI(chatID, msgID, "<b>"+esc(tr(lang, "settings.advanced"))+"</b>", advancedMenu(uid))
 		}
 	case data == "nav:workspace":
 		if needAdmin() {
-			editUI(chatID, msgID, "📁 <b>"+esc(tr(lang, "ws.title"))+"</b>\n\n<code>"+esc(c.Workspace)+"</code>\n\n<i>"+esc(tr(lang, "ws.usage"))+"</i>", backKB(lang, "nav:settings"))
+			editUI(chatID, msgID, "<b>"+esc(tr(lang, "ws.title"))+"</b>\n\n<code>"+esc(c.Workspace)+"</code>\n\n<i>"+esc(tr(lang, "ws.usage"))+"</i>", backKB(lang, "nav:settings"))
 		}
 	case data == "act:health":
 		if needAdmin() {
-			editUI(chatID, msgID, "⏳ "+esc(tr(lang, "health.running")), nil)
+			editUI(chatID, msgID, esc(tr(lang, "health.running")), nil)
 			editUI(chatID, msgID, healthCheck(lang), keyboard([][]Btn{{btn(tr(lang, "btn.refresh"), "act:health"), btn(tr(lang, "btn.back"), "nav:advanced")}}))
 		}
 	case data == "act:runs":
@@ -177,7 +177,7 @@ func handleCallback(cb CallbackQuery) {
 		editUI(chatID, msgID, cronPanel(lang), cronKeyboard(lang))
 	case data == "act:quick":
 		if needAdmin() {
-			editUI(chatID, msgID, "⚡ <b>"+esc(tr(lang, "quick.title"))+"</b>\n\n"+esc(quickList(lang))+"\n<i>"+esc(tr(lang, "quick.help"))+"</i>", backKB(lang, "nav:settings"))
+			editUI(chatID, msgID, "<b>"+esc(tr(lang, "quick.title"))+"</b>\n\n"+esc(quickList(lang))+"\n<i>"+esc(tr(lang, "quick.help"))+"</i>", backKB(lang, "nav:settings"))
 		}
 	case data == "act:config":
 		if needAdmin() {
@@ -185,7 +185,7 @@ func handleCallback(cb CallbackQuery) {
 		}
 	case data == "act:log":
 		if needAdmin() {
-			editUI(chatID, msgID, "📜 <b>"+esc(tr(lang, "log.title"))+"</b>\n<pre>"+esc(short(tailLog(20), 3200))+"</pre>", keyboard([][]Btn{{btn(tr(lang, "btn.refresh"), "act:log"), btn(tr(lang, "btn.back"), "nav:advanced")}}))
+			editUI(chatID, msgID, "<b>"+esc(tr(lang, "log.title"))+"</b>\n<pre>"+esc(short(tailLog(20), 3200))+"</pre>", keyboard([][]Btn{{btn(tr(lang, "btn.refresh"), "act:log"), btn(tr(lang, "btn.back"), "nav:advanced")}}))
 		}
 	case data == "nav:effort":
 		if !needAdmin() {
@@ -200,7 +200,7 @@ func handleCallback(cb CallbackQuery) {
 			rows = append(rows, []Btn{btn(mark(cur, lv), "set:effort:"+lv)})
 		}
 		rows = append(rows, []Btn{btn(tr(lang, "btn.back"), "nav:settings")})
-		editUI(chatID, msgID, "🧠 <b>"+esc(tr(lang, "effort.title"))+"</b>\n\n"+esc(tr(lang, "effort.hint")), keyboard(rows))
+		editUI(chatID, msgID, "<b>"+esc(tr(lang, "effort.title"))+"</b>\n\n"+esc(tr(lang, "effort.hint")), keyboard(rows))
 	case strings.HasPrefix(data, "set:effort:"):
 		if !needAdmin() {
 			return
@@ -236,7 +236,7 @@ func handleCallback(cb CallbackQuery) {
 			rows = append(rows, []Btn{btn(mark(c.Model, short(m, 40)), settingCallback("model", m))})
 		}
 		rows = append(rows, []Btn{btn(tr(lang, "btn.provider"), "nav:provider"), btn(tr(lang, "btn.back"), "nav:settings")})
-		editUI(chatID, msgID, "🤖 <b>"+esc(tr(lang, "model.pick"))+"</b>", keyboard(rows))
+		editUI(chatID, msgID, "<b>"+esc(tr(lang, "model.pick"))+"</b>", keyboard(rows))
 	case strings.HasPrefix(data, "set:model:"):
 		if !needAdmin() {
 			return
@@ -262,7 +262,7 @@ func handleCallback(cb CallbackQuery) {
 			rows = append(rows, []Btn{btn(mark(c.ProviderName, short(p.Name, 40)), settingCallback("provider", p.Name))})
 		}
 		rows = append(rows, []Btn{btn(tr(lang, "btn.back"), "nav:advanced")})
-		editUI(chatID, msgID, "🔌 <b>"+esc(tr(lang, "provider.pick"))+"</b>\n\n<i>"+esc(tr(lang, "provider.usage"))+"</i>", keyboard(rows))
+		editUI(chatID, msgID, "<b>"+esc(tr(lang, "provider.pick"))+"</b>\n\n<i>"+esc(tr(lang, "provider.usage"))+"</i>", keyboard(rows))
 	case strings.HasPrefix(data, "set:provider:"):
 		if !needAdmin() {
 			return
@@ -297,16 +297,16 @@ func handleCallback(cb CallbackQuery) {
 		addRow := func(id int64, tag string) {
 			rows = append(rows, []Btn{btn(fmt.Sprintf("%s %d %s", tag, id, short(userName(id), 10)), "user:"+strconv.FormatInt(id, 10))})
 		}
-		addRow(c.OwnerID, "👑")
+		addRow(c.OwnerID, "")
 		for _, a := range c.Admins {
-			addRow(a, "🛡")
+			addRow(a, "")
 		}
 		for _, f := range c.Friends {
-			addRow(f, "🤝")
+			addRow(f, "")
 		}
 		rows = append(rows, []Btn{btn(tr(lang, "users.all"), "nav:allusers"), btn(tr(lang, "users.bans"), "nav:bans")})
 		rows = append(rows, []Btn{btn(tr(lang, "btn.back"), "nav:advanced")})
-		editUI(chatID, msgID, "👥 <b>"+esc(tr(lang, "users.title"))+"</b>\n\n"+esc(tr(lang, "users.summary", len(c.Admins), len(c.Friends), len(c.Banned))), keyboard(rows))
+		editUI(chatID, msgID, "<b>"+esc(tr(lang, "users.title"))+"</b>\n\n"+esc(tr(lang, "users.summary", len(c.Admins), len(c.Friends), len(c.Banned))), keyboard(rows))
 	case data == "nav:allusers":
 		if !needAdmin() {
 			return
@@ -330,27 +330,27 @@ func handleCallback(cb CallbackQuery) {
 			rows = append(rows, []Btn{btn(fmt.Sprintf("%s %d %s", roleIcon(p.id), p.id, short(p.s.Name, 10)), "user:"+strconv.FormatInt(p.id, 10))})
 		}
 		rows = append(rows, []Btn{btn(tr(lang, "btn.back"), "nav:users")})
-		editUI(chatID, msgID, "👥 "+esc(tr(lang, "users.visitors", len(list))), keyboard(rows))
+		editUI(chatID, msgID, esc(tr(lang, "users.visitors", len(list))), keyboard(rows))
 	case data == "nav:bans":
 		if !needAdmin() {
 			return
 		}
 		var rows [][]Btn
 		for _, id := range c.Banned {
-			rows = append(rows, []Btn{btn(fmt.Sprintf("✖ %d %s", id, short(userName(id), 8)), "unset:ban:"+strconv.FormatInt(id, 10))})
+			rows = append(rows, []Btn{btn(fmt.Sprintf("%d %s", id, short(userName(id), 8)), "unset:ban:"+strconv.FormatInt(id, 10))})
 		}
 		rows = append(rows, []Btn{btn(tr(lang, "btn.back"), "nav:users")})
 		text := tr(lang, "users.bans_hint")
 		if len(c.Banned) == 0 {
 			text = tr(lang, "users.bans_empty")
 		}
-		editUI(chatID, msgID, "🚫 "+esc(text), keyboard(rows))
+		editUI(chatID, msgID, esc(text), keyboard(rows))
 	case strings.HasPrefix(data, "user:"):
 		if !needAdmin() {
 			return
 		}
 		id, _ := strconv.ParseInt(strings.TrimPrefix(data, "user:"), 10, 64)
-		info := fmt.Sprintf("👤 <b>%d</b>\n\n%s %s\n%s %s\n%s %s", id, esc(tr(lang, "users.name")), esc(userName(id)), esc(tr(lang, "menu.role")), esc(roleNameLang(id, lang)), esc(tr(lang, "users.last")), esc(lastActive(id)))
+		info := fmt.Sprintf("<b>%d</b>\n\n%s %s\n%s %s\n%s %s", id, esc(tr(lang, "users.name")), esc(userName(id)), esc(tr(lang, "menu.role")), esc(roleNameLang(id, lang)), esc(tr(lang, "users.last")), esc(lastActive(id)))
 		var rows [][]Btn
 		if isOwner(id) {
 			info += "\n\n<i>" + esc(tr(lang, "users.owner_fixed")) + "</i>"
@@ -398,7 +398,7 @@ func handleCallback(cb CallbackQuery) {
 		}
 		if persistUIConfig(chatID, c) {
 			toast = tr(lang, "toast.saved")
-			editUI(chatID, msgID, "✅ "+esc(tr(lang, "list.updated", tr(lang, "list."+parts[1]), id)), backKB(lang, "nav:users"))
+			editUI(chatID, msgID, esc(tr(lang, "list.updated", tr(lang, "list."+parts[1]), id)), backKB(lang, "nav:users"))
 		}
 	}
 }
@@ -406,13 +406,13 @@ func handleCallback(cb CallbackQuery) {
 func roleIcon(id int64) string {
 	switch {
 	case isOwner(id):
-		return "👑"
+		return ""
 	case isBanned(id):
-		return "🚫"
+		return ""
 	case isAdmin(id):
-		return "🛡"
+		return ""
 	case isFriend(id):
-		return "🤝"
+		return ""
 	}
 	return "·"
 }
