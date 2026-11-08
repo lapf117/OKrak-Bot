@@ -146,6 +146,8 @@ type llmAttemptError struct {
 	err        error
 	retryable  bool
 	retryAfter time.Duration
+	status     int    // HTTP status of a non-2xx answer
+	body       string // its (redacted, shortened) body
 }
 
 // permanentModelError reports provider errors that a retry cannot fix.
@@ -187,12 +189,17 @@ func chatContext(ctx context.Context, messages []LLMMessage, schemas []ToolSchem
 	if model == "" {
 		return nil, fmt.Errorf("未配置模型名称")
 	}
-	bodyReq := chatRequest{Model: model, ReasoningEffort: c.ReasoningEffort, Messages: messages, Tools: schemas}
-	// Most reasoning providers reject a custom temperature. An empty effort keeps the compatible temperature option.
-	if c.ReasoningEffort == "" {
-		bodyReq.Temperature = &c.Temperature
+	// Only send a reasoning_effort the provider/model accepts (see effort.go).
+	effort := effectiveEffort(c)
+	encode := func(effort string) ([]byte, error) {
+		bodyReq := chatRequest{Model: model, ReasoningEffort: effort, Messages: messages, Tools: schemas}
+		// Most reasoning providers reject a custom temperature. An empty effort keeps the compatible temperature option.
+		if effort == "" {
+			bodyReq.Temperature = &c.Temperature
+		}
+		return json.Marshal(bodyReq)
 	}
-	body, err := json.Marshal(bodyReq)
+	body, err := encode(effort)
 	if err != nil {
 		return nil, err
 	}
@@ -233,6 +240,17 @@ func chatContext(ctx context.Context, messages []LLMMessage, schemas []ToolSchem
 		if err := checkExecutionAccess(ctx); err != nil {
 			return nil, err
 		}
+		if effort != "" && rejectsEffort(failure.status, failure.body) {
+			// The API does not take reasoning_effort: drop it and resend at once.
+			logf("服务商拒绝 reasoning_effort=%s（%s），已停用该参数并重发", effort, c.Model)
+			effortRejected.Store(effortKey(c), true)
+			effort = ""
+			if body, err = encode(""); err != nil {
+				return nil, err
+			}
+			attempt--
+			continue
+		}
 		if !failure.retryable {
 			return nil, failure.err
 		}
@@ -270,7 +288,8 @@ func chatAttempt(ctx context.Context, client *http.Client, endpoint, apiKey stri
 		return nil, fail(fmt.Errorf("模型响应超过 8 MiB"))
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		failure := &llmAttemptError{err: fmt.Errorf("模型 HTTP %d: %s", resp.StatusCode, short(redactExecutionSecrets(ctx, string(raw)), 500))}
+		text := short(redactExecutionSecrets(ctx, string(raw)), 500)
+		failure := &llmAttemptError{err: fmt.Errorf("模型 HTTP %d: %s", resp.StatusCode, text), status: resp.StatusCode, body: text}
 		if retryableStatus(resp.StatusCode) {
 			failure.retryable = true
 			if seconds, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && seconds > 0 {

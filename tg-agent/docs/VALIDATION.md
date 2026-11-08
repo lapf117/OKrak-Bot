@@ -23,6 +23,8 @@
 
 未使用真实 Telegram token、模型 API key 或 SSH 主机；Bot API 与模型接口均为本地模拟。
 
+2.2.1 追加（`effort_test.go`）：按模型名与 `providers[].efforts` 列出档位；不支持的档位不发送；服务商拒绝 reasoning_effort 时去参重发并记住；档位面板与 `/effort` 只接受可选值。`go vet`、`go test -race -count=1 ./...` 通过。
+
 ---
 
 # 2.1.2 验证记录

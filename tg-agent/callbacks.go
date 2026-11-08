@@ -195,26 +195,15 @@ func handleCallback(cb CallbackQuery) {
 		if !needAdmin() {
 			return
 		}
-		var rows [][]Btn
-		for _, lv := range effortChoices {
-			cur := c.ReasoningEffort
-			if cur == "" {
-				cur = "off"
-			}
-			rows = append(rows, []Btn{btn(mark(cur, lv), "set:effort:"+lv)})
-		}
-		rows = append(rows, []Btn{btn(tr(lang, "btn.back"), "nav:settings")})
-		editUI(chatID, msgID, "<b>"+esc(tr(lang, "effort.title"))+"</b>\n\n"+esc(tr(lang, "effort.hint")), keyboard(rows))
+		text, kb := effortPanel(lang, c)
+		editUI(chatID, msgID, text, kb)
 	case strings.HasPrefix(data, "set:effort:"):
 		if !needAdmin() {
 			return
 		}
 		level := strings.TrimPrefix(data, "set:effort:")
-		valid := false
-		for _, lv := range effortChoices {
-			valid = valid || lv == level
-		}
-		if !valid {
+		if opts, _ := effortOptions(c); level != "off" && !containsString(opts, level) {
+			toast = tr(lang, "effort.unsupported", c.Model, strings.Join(append([]string{"off"}, opts...), " | "))
 			return
 		}
 		if level == "off" {

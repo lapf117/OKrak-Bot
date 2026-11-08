@@ -19,6 +19,7 @@ type Provider struct {
 	APIKey       string   `json:"api_key"`
 	Models       []string `json:"models"`
 	DefaultModel string   `json:"default_model"`
+	Efforts      []string `json:"efforts,omitempty"` // reasoning_effort values this provider accepts; empty = match by model name
 }
 
 type SSHConf struct {
@@ -100,6 +101,7 @@ func cloneConfig(c Config) Config {
 	c.Provider = append([]Provider(nil), c.Provider...)
 	for i := range c.Provider {
 		c.Provider[i].Models = append([]string(nil), c.Provider[i].Models...)
+		c.Provider[i].Efforts = append([]string(nil), c.Provider[i].Efforts...)
 	}
 	c.QuickCommands = append([]QuickCmd(nil), c.QuickCommands...)
 	c.Workspaces = append([]string(nil), c.Workspaces...)
@@ -282,6 +284,11 @@ func validateConfig(c Config) error {
 		}
 		if p.Name == c.ProviderName {
 			selected = true
+		}
+		for _, e := range p.Efforts {
+			if e = strings.ToLower(strings.TrimSpace(e)); e != "off" && (e == "" || !validEffort(e)) {
+				return fmt.Errorf("provider %s 的 efforts 只能是小写字母档位，例如 low、medium、high", p.Name)
+			}
 		}
 	}
 	if len(c.Provider) > 0 && !selected {

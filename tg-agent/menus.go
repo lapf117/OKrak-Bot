@@ -70,7 +70,7 @@ func menuText(uid int64) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "<b>▍%s</b> · %s\n\n", esc(tr(lang, "app.name")), esc(state))
 	fmt.Fprintf(&b, "%s <code>%s</code>\n", esc(tr(lang, "menu.model")), esc(c.Model))
-	fmt.Fprintf(&b, "%s %s\n", esc(tr(lang, "menu.effort")), esc(effortLabel(lang, c.ReasoningEffort)))
+	fmt.Fprintf(&b, "%s %s\n", esc(tr(lang, "menu.effort")), esc(effortLabel(lang, effectiveEffort(c))))
 	// The execution mode is a backend concern; only admins see it.
 	if isAdmin(uid) {
 		fmt.Fprintf(&b, "%s %s\n", esc(tr(lang, "menu.mode")), esc(modeLabel(lang, approvalMode(c))))

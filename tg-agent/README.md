@@ -201,6 +201,9 @@ SSH 后端只从机器人主机的 `skills_dir` 加载技能；需要使用远�
 | `show_steps` | false，隐藏滚动详情，执行记录仍保存 |
 | `display` | 显示开关的全员默认值，见“显示与统计” |
 | `llm_retries` | 6，模型接口失败后的静默重试次数（0 为默认，-1 关闭，最多 20） |
+| `providers[].efforts` | 可选，该服务商接受的推理档位，如 `["low","medium","high"]`；不填则按模型名自动匹配 |
+
+**推理档位按 API 提供的选项选择**：“推理档位”面板和 `/effort` 只列出当前服务商/模型支持的值。来源依次是 `providers[].efforts`、内置的模型名对照（DeepSeek、GPT-4o、Qwen 等不支持该参数，只显示“off”，DeepSeek 用 deepseek-reasoner 开启思考；GPT-5 为 minimal/low/medium/high，GPT-5.1 为 low/medium/high，GPT-5.2 起含 xhigh，o 系列 low/medium/high，grok-3-mini low/high，Gemini 2.5+ low/medium/high），未识别的模型列出常见档位。请求只携带当前模型支持的值；服务商返回“不支持 reasoning_effort”时会去掉该参数静默重发，并在本次运行内不再发送。
 
 模型接口遇到连接失败、超时、408/409/425/429/5xx、网关返回的非 JSON 页面、空结果或临时性报错时，会在后台按 1s、2s、4s… 最长 30s 的间隔（含少量抖动，优先遵循 `Retry-After`）静默重试，用户只看到任务继续进行；每次重试写入 `agent.log`，次数记入执行记录。鉴权失败、请求参数错误、上下文超长、余额不足等重试无济于事的错误会立即结束任务，并提示可用 `/continue` 重跑。Telegram 接口的发送与编辑同样在后台重试（最多 4 次）。
 

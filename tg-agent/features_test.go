@@ -81,15 +81,6 @@ func TestToolSchemasRequireIntentAndAliasTodo(t *testing.T) {
 	}
 }
 
-func containsString(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
 func TestToolAccessClassification(t *testing.T) {
 	cases := []struct {
 		name, args string

@@ -156,7 +156,7 @@ func usagePanel(uid int64, lang string) string {
 	u := getUsage()
 	var b strings.Builder
 	b.WriteString("<b>" + esc(tr(lang, "usage.title")) + "</b>\n\n")
-	fmt.Fprintf(&b, "%s <code>%s</code> · %s %s\n\n", esc(tr(lang, "menu.model")), esc(c.Model), esc(tr(lang, "menu.effort")), esc(effortLabel(lang, c.ReasoningEffort)))
+	fmt.Fprintf(&b, "%s <code>%s</code> · %s %s\n\n", esc(tr(lang, "menu.model")), esc(c.Model), esc(tr(lang, "menu.effort")), esc(effortLabel(lang, effectiveEffort(c))))
 	fmt.Fprintf(&b, "%s <b>%s</b> tokens\n", esc(tr(lang, "usage.total")), esc(humanTokens(u.total())))
 	fmt.Fprintf(&b, "  · %s %s\n  · %s %s\n", esc(tr(lang, "usage.prompt")), esc(humanTokens(u.PromptTokens)), esc(tr(lang, "usage.completion")), esc(humanTokens(u.CompletionTokens)))
 	fmt.Fprintf(&b, "%s %s · %s %s\n", esc(tr(lang, "usage.tasks")), esc(humanTokens(u.Tasks)), esc(tr(lang, "usage.tools")), esc(humanTokens(u.ToolCalls)))

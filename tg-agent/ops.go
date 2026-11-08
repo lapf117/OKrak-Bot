@@ -98,7 +98,7 @@ func healthCheck(lang string) string {
 	}
 	sk, _ := loadSkillIndex()
 	fmt.Fprintf(&b, "\n%s %d · %s %d · %s %d\n", esc(tr(lang, "health.tools")), len(allTools()), esc(tr(lang, "health.skills")), len(sk), esc(tr(lang, "health.jobs")), len(cronSnapshot()))
-	fmt.Fprintf(&b, "<code>%s</code> · %s %s · v%s", esc(c.Model), esc(tr(lang, "effort.title")), esc(effortLabel(lang, c.ReasoningEffort)), version)
+	fmt.Fprintf(&b, "<code>%s</code> · %s %s · v%s", esc(c.Model), esc(tr(lang, "effort.title")), esc(effortLabel(lang, effectiveEffort(c))), version)
 	return b.String()
 }
 

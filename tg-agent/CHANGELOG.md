@@ -1,3 +1,9 @@
+# 2.2.1
+
+- 推理档位按服务商与模型提供的选项显示：优先使用 `providers[].efforts`，否则按模型名自动匹配（DeepSeek、GPT-4o、Qwen 等不显示档位；GPT-5 为 minimal/low/medium/high；GPT-5.1 为 low/medium/high；GPT-5.2 起含 xhigh；o 系列、grok-3-mini、Gemini 2.5+ 各按其支持值），未识别的模型列出常见档位。
+- 只发送当前模型支持的 reasoning_effort；切换到不支持的模型时自动不发送，切回后恢复。服务商拒绝该参数时去掉参数静默重发，本次运行内不再发送。
+- `/effort` 不带参数时打开档位面板；设置不受支持的档位会提示可选值。
+
 # 2.2.0
 
 - 回复下方不再附带“新对话 / 重试 / 菜单 / 执行记录”按钮；停止、失败消息同样不带按钮。需要时用 /new、/continue、/menu、/runs。

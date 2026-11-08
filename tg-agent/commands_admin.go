@@ -7,10 +7,6 @@ import (
 	"time"
 )
 
-// effortChoices are offered as buttons; /effort also accepts other lowercase
-// provider-specific values. "off" omits reasoning_effort from requests.
-var effortChoices = []string{"off", "minimal", "low", "medium", "high"}
-
 // handleAdminCommand covers model, provider, prompt, people and workspace settings.
 func handleAdminCommand(chatID, uid int64, cmd, rest string) bool {
 	lang := langFor(uid)
@@ -74,15 +70,21 @@ func handleAdminCommand(chatID, uid int64, cmd, rest string) bool {
 		}
 	case "/effort":
 		if rest == "" {
-			sendMessage(chatID, tr(lang, "effort.current", effortLabel(lang, c.ReasoningEffort))+"\n"+tr(lang, "effort.usage"), nil)
+			text, kb := effortPanel(lang, c)
+			sendUI(chatID, text, kb)
 			return true
 		}
-		level := strings.ToLower(rest)
-		if level == "off" || level == "default" || level == "none" {
+		level := strings.ToLower(strings.TrimSpace(rest))
+		if level == "off" || level == "default" {
 			level = ""
 		}
 		if !validEffort(level) {
-			sendMessage(chatID, tr(lang, "effort.usage"), nil)
+			sendMessage(chatID, effortUsage(lang, c), nil)
+			return true
+		}
+		// Known providers/models only take the values they list.
+		if opts, src := effortOptions(c); level != "" && src != effortUnknown && !containsString(opts, level) {
+			sendMessage(chatID, tr(lang, "effort.unsupported", c.Model, strings.Join(append([]string{"off"}, opts...), " | ")), nil)
 			return true
 		}
 		c.ReasoningEffort = level
