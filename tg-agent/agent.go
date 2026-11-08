@@ -14,16 +14,18 @@ import (
 )
 
 // StepEvent reports agent progress to the Telegram panel.
-//   - Note: the model's narration that accompanies a batch of tool calls.
+//   - Thought: one per model response; Note is the narration that accompanies
+//     a batch of tool calls, Reasoning the provider's reasoning_content.
 //   - Tool start: Tool/Detail/Intent set, Done=false.
 //   - Tool end: Done=true with Output (Failed when the tool returned an error).
 //   - Final: the agent finished.
 type StepEvent struct {
-	Step                 int
-	Tool, Detail, Output string
-	Intent, Note         string
-	Plan                 []planItem
-	Done, Final, Failed  bool
+	Step                    int
+	Tool, Detail, Output    string
+	Intent, Note, Reasoning string
+	Plan                    []planItem
+	Done, Final, Failed     bool
+	Thought                 bool
 }
 
 type stepFn func(ev StepEvent)
@@ -135,12 +137,13 @@ func runAgentContext(ctx context.Context, chatID, uid int64, userText string, im
 		}
 		msgs = append(msgs, msg)
 		if len(msg.ToolCalls) == 0 {
+			if msg.ReasoningContent != "" {
+				emit(StepEvent{Step: step + 1, Thought: true, Reasoning: tailRunes(msg.ReasoningContent, 4000)})
+			}
 			finalText = text
 			break
 		}
-		if text != "" {
-			emit(StepEvent{Step: step + 1, Note: oneLine(text, 300)})
-		}
+		emit(StepEvent{Step: step + 1, Thought: true, Note: oneLine(text, 300), Reasoning: tailRunes(msg.ReasoningContent, 4000)})
 		for _, tc := range msg.ToolCalls {
 			if err := ctx.Err(); err != nil {
 				return "", err
@@ -151,6 +154,9 @@ func runAgentContext(ctx context.Context, chatID, uid int64, userText string, im
 			emit(StepEvent{Step: step + 1, Tool: name, Detail: detail, Intent: intent})
 			if b := budgetOf(ctx); b != nil {
 				atomic.AddInt64(&b.ToolCalls, 1)
+			}
+			if name == "bash" {
+				recordCommand(ctx)
 			}
 			result, toolErr := runToolContext(ctx, tc.Function.Name, tc.Function.Arguments)
 			if ctx.Err() != nil {

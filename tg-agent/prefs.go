@@ -11,8 +11,23 @@ import (
 
 // UserPrefs are per-user UI choices stored in prefs.json next to config.json.
 type UserPrefs struct {
-	Lang  string `json:"lang,omitempty"`  // zh | en; empty follows config/Telegram
-	Steps string `json:"steps,omitempty"` // on | off; empty follows show_steps
+	Lang  string          `json:"lang,omitempty"`  // zh | en; empty follows config/Telegram
+	Steps string          `json:"steps,omitempty"` // on | off; empty follows show_steps
+	Show  map[string]bool `json:"show,omitempty"`  // display switches overriding the defaults
+}
+
+func (p UserPrefs) empty() bool { return p.Lang == "" && p.Steps == "" && len(p.Show) == 0 }
+
+// clone copies the map so callers never share state with prefsState.
+func (p UserPrefs) clone() UserPrefs {
+	if p.Show != nil {
+		show := make(map[string]bool, len(p.Show))
+		for k, v := range p.Show {
+			show[k] = v
+		}
+		p.Show = show
+	}
+	return p
 }
 
 var prefsState = struct {
@@ -43,16 +58,19 @@ func getPrefs(uid int64) UserPrefs {
 	prefsState.Lock()
 	defer prefsState.Unlock()
 	loadPrefsLocked()
-	return prefsState.data[uid]
+	return prefsState.data[uid].clone()
 }
 
 func updatePrefs(uid int64, fn func(*UserPrefs)) error {
 	prefsState.Lock()
 	defer prefsState.Unlock()
 	loadPrefsLocked()
-	p := prefsState.data[uid]
+	p := prefsState.data[uid].clone()
 	fn(&p)
-	if p == (UserPrefs{}) {
+	if len(p.Show) == 0 {
+		p.Show = nil
+	}
+	if p.empty() {
 		delete(prefsState.data, uid)
 	} else {
 		prefsState.data[uid] = p
@@ -131,6 +149,9 @@ func stepsDetailed(uid int64, c Config) bool {
 		return true
 	case "off":
 		return false
+	}
+	if v, ok := c.Display["output"]; ok {
+		return v
 	}
 	return c.ShowSteps
 }

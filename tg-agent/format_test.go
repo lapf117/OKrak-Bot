@@ -9,14 +9,14 @@ func TestMarkdownToHTMLCoversCommonBlocks(t *testing.T) {
 	md := "# 标题 Title\n\n**粗体** and *italic* with `a<b>` and [link](https://example.com/?a=1&b=2)\n\n- item one\n- [x] done\n1. first\n\n> quoted **text**\n\n```go\nfmt.Println(\"<hi>\")\n```\n\n| 名称 | value |\n| --- | --- |\n| 中文 | 1 |"
 	got := markdownToHTML(md)
 	for _, want := range []string{
-		"<b>标题 Title</b>",
+		"<b>▍标题 Title</b>",
 		"<b>粗体</b>",
 		"<i>italic</i>",
 		"<code>a&lt;b&gt;</code>",
 		`<a href="https://example.com/?a=1&amp;b=2">link</a>`,
 		"• item one",
-		"[x] done",
-		"1. first",
+		"✓ done",
+		"<b>1.</b> first",
 		"<blockquote>quoted <b>text</b></blockquote>",
 		`<pre><code class="language-go">fmt.Println("&lt;hi&gt;")</code></pre>`,
 		"名称 │ value",
@@ -154,7 +154,7 @@ func TestUIHasNoEmoji(t *testing.T) {
 	panel.apply(StepEvent{Tool: "bash", Done: true, Output: "a\nb"})
 	for name, s := range map[string]string{
 		"menu": menuText(uid), "help": helpBody(uid), "mode": executionSettingsText(langZH),
-		"panel": panel.render(), "final": panel.renderFinal("done"), "memory": memoryPanel(uid, langZH),
+		"panel": panel.render(), "final": panel.renderFinal("✓", "done"), "memory": memoryPanel(uid, langZH),
 	} {
 		if r, ok := hasEmoji(s); ok {
 			t.Errorf("%s surface contains emoji %q:\n%s", name, string(r), s)

@@ -11,12 +11,12 @@ import (
 func mainMenu(uid int64) map[string]interface{} {
 	lang := langFor(uid)
 	if !isAdmin(uid) {
-		return keyboard([][]Btn{{btn(tr(lang, "btn.new"), "act:new"), btn(tr(lang, "btn.help"), "act:help")}})
+		return keyboard([][]Btn{{btn(tr(lang, "btn.new"), "act:new"), btn(tr(lang, "btn.display"), "nav:display"), btn(tr(lang, "btn.help"), "act:help")}})
 	}
 	return keyboard([][]Btn{
 		{btn(tr(lang, "btn.new"), "act:new"), btn(tr(lang, "btn.usage"), "act:usage")},
 		{btn(tr(lang, "btn.model"), "nav:model"), btn(tr(lang, "btn.effort"), "nav:effort")},
-		{btn(tr(lang, "btn.settings"), "nav:settings"), btn(tr(lang, "btn.help"), "act:help")},
+		{btn(tr(lang, "btn.display"), "nav:display"), btn(tr(lang, "btn.settings"), "nav:settings"), btn(tr(lang, "btn.help"), "act:help")},
 	})
 }
 
@@ -31,15 +31,11 @@ func adminMenu(uid int64) map[string]interface{} {
 		return mainMenu(uid)
 	}
 	lang := langFor(uid)
-	steps := tr(lang, "btn.steps_off")
-	if stepsDetailed(uid, configSnapshot()) {
-		steps = tr(lang, "btn.steps_on")
-	}
 	return keyboard([][]Btn{
 		{btn(tr(lang, "btn.model"), "nav:model"), btn(tr(lang, "btn.mode"), "nav:execution")},
 		{btn(tr(lang, "btn.workspace"), "nav:workspace"), btn(tr(lang, "btn.effort"), "nav:effort")},
 		{btn(tr(lang, "btn.cron"), "act:cron"), btn(tr(lang, "btn.quick"), "act:quick")},
-		{btn(steps, "act:steps"), btn(tr(lang, "btn.advanced"), "nav:advanced")},
+		{btn(tr(lang, "btn.display"), "nav:display"), btn(tr(lang, "btn.advanced"), "nav:advanced")},
 		{btn(tr(lang, "btn.back"), "nav:root")},
 	})
 }
@@ -72,7 +68,7 @@ func menuText(uid int64) string {
 		}
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "<b>%s</b> · %s\n\n", esc(tr(lang, "app.name")), esc(state))
+	fmt.Fprintf(&b, "<b>▍%s</b> · %s\n\n", esc(tr(lang, "app.name")), esc(state))
 	fmt.Fprintf(&b, "%s <code>%s</code>\n", esc(tr(lang, "menu.model")), esc(c.Model))
 	fmt.Fprintf(&b, "%s %s\n", esc(tr(lang, "menu.effort")), esc(effortLabel(lang, c.ReasoningEffort)))
 	// The execution mode is a backend concern; only admins see it.
@@ -90,7 +86,7 @@ func menuText(uid int64) string {
 func helpBody(uid int64) string {
 	lang := langFor(uid)
 	var b strings.Builder
-	b.WriteString("<b>" + esc(tr(lang, "app.name")) + "</b>\n" + esc(tr(lang, "help.intro")) + "\n")
+	b.WriteString("<b>▍" + esc(tr(lang, "app.name")) + "</b>\n" + esc(tr(lang, "help.intro")) + "\n")
 	section := func(title string, lines ...string) {
 		b.WriteString("\n<b>" + esc(title) + "</b>\n")
 		for _, l := range lines {
@@ -103,7 +99,7 @@ func helpBody(uid int64) string {
 		"/status|"+tr(lang, "help.status"), "/continue|"+tr(lang, "help.continue"))
 	section(tr(lang, "help.more"),
 		"/memory|"+tr(lang, "help.memory"), "/skills|"+tr(lang, "help.skills"), "/export|"+tr(lang, "help.export"),
-		"/lang zh|en|"+tr(lang, "help.lang"), "/steps on|off|"+tr(lang, "help.steps"), "/cmd|"+tr(lang, "help.cmd"))
+		"/show|"+tr(lang, "help.show"), "/lang zh|en|"+tr(lang, "help.lang"), "/steps on|off|"+tr(lang, "help.steps"), "/cmd|"+tr(lang, "help.cmd"))
 	if isAdmin(uid) {
 		section(tr(lang, "help.admin"),
 			"/settings|"+tr(lang, "help.settings"), "/mode|"+tr(lang, "help.mode"), "/cron|"+tr(lang, "help.cron"),

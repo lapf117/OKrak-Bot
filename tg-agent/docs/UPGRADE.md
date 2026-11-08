@@ -25,3 +25,10 @@
 模型报参数不支持时，先将 reasoning_effort 设为空；填写该项时需使用服务商支持的值。每个 provider 使用 OpenAI 兼容的 Chat Completions 接口，不自动转换其他协议。
 
 如使用 systemd，请将服务用户、可写目录和 EnvironmentFile 按部署实际位置修改。启动失败返回非零退出码，模板可自动重启。
+
+## 2.1 → 2.2
+
+- 直接替换程序即可，原有 `config.json`、`prefs.json` 无需修改；新增配置项均为可选：`display`（显示开关的全员默认值）与 `llm_retries`（默认 6）。`display` 中写了未知项会在启动和 `--check` 时报错。
+- 回复下方不再有按钮。旧消息上的“新对话 / 重试 / 菜单 / 执行记录”按钮仍可点击；执行记录改用 `/runs` 获取。
+- 用户的显示选择写入 `prefs.json` 的 `show` 字段；`/steps` 与 `show_steps` 继续控制“输出预览”。
+- 模型接口失败时任务会先在后台重试（默认最长约 1 分钟）再报错，长时间无响应的服务商可调低 `llm_retries`。

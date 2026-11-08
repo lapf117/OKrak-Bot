@@ -389,7 +389,7 @@ func TestAgentReportsNotesAndIntents(t *testing.T) {
 	if strings.ContainsAny(html, "📂🤖🔧✅") {
 		t.Errorf("panel still contains emoji:\n%s", html)
 	}
-	if final := panel.renderFinal("已完成"); !strings.Contains(final, "×1") {
+	if final := panel.renderFinal("✓", "已完成"); !strings.Contains(final, "×1") {
 		t.Errorf("final summary lacks tool histogram: %s", final)
 	}
 }

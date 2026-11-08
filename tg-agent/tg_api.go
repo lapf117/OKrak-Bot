@@ -39,13 +39,19 @@ func (e *tgError) Error() string { return fmt.Sprintf("telegram %d: %s", e.Code,
 
 var errNotModified = errors.New("message is not modified")
 
+// Telegram calls are retried silently too: 4 attempts, waiting 1s, 2s, 4s
+// (or the retry_after Telegram asks for). Tests shorten tgRetryBase.
+var tgRetryBase = time.Second
+
+const tgAttempts = 4
+
 func isParseError(err error) bool {
 	var te *tgError
 	return errors.As(err, &te) && te.Code == 400 && strings.Contains(strings.ToLower(te.Description), "parse")
 }
 
-// tgDo calls a Bot API method with bounded retries for transport errors and
-// 429/5xx responses. Definitive 4xx errors are returned immediately.
+// tgDo calls a Bot API method with bounded, silent retries for transport
+// errors and 429/5xx responses. Definitive 4xx errors are returned immediately.
 func tgDo(ctx context.Context, method string, payload interface{}) (json.RawMessage, error) {
 	c := configSnapshot()
 	body, err := json.Marshal(payload)
@@ -54,7 +60,8 @@ func tgDo(ctx context.Context, method string, payload interface{}) (json.RawMess
 	}
 	endpoint := apiBase + c.Token + "/" + method
 	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := 0; attempt < tgAttempts; attempt++ {
+		wait := tgRetryBase << attempt
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 		if err != nil {
 			return nil, errors.New(redactSecrets(err.Error()))
@@ -66,7 +73,10 @@ func tgDo(ctx context.Context, method string, payload interface{}) (json.RawMess
 				return nil, ctx.Err()
 			}
 			lastErr = errors.New(redactSecrets(err.Error()))
-			if waitContext(ctx, time.Second) != nil {
+			if attempt == tgAttempts-1 {
+				break
+			}
+			if waitContext(ctx, wait) != nil {
 				return nil, ctx.Err()
 			}
 			continue
@@ -93,7 +103,9 @@ func tgDo(ctx context.Context, method string, payload interface{}) (json.RawMess
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != 429 {
 			return nil, lastErr
 		}
-		wait := time.Second
+		if attempt == tgAttempts-1 {
+			break
+		}
 		if r.Parameters.RetryAfter > 0 {
 			wait = time.Duration(min(r.Parameters.RetryAfter, 30)) * time.Second
 		}
@@ -204,6 +216,45 @@ func sendRich(ctx context.Context, chatID int64, markdown string, markup interfa
 		}
 	}
 	return first
+}
+
+// sendAnswer sends a Markdown answer with an optional HTML statistics line
+// appended to the last message (or sent on its own when it does not fit).
+// It returns the id of the first message, 0 when nothing was delivered.
+func sendAnswer(ctx context.Context, chatID int64, markdown, footerHTML string) int64 {
+	chunks := markdownChunks(markdown, telegramChunk)
+	if footerHTML != "" {
+		last := &chunks[len(chunks)-1]
+		footerPlain := stripTags(footerHTML)
+		switch {
+		case last.HTML != "" && utf16Len(last.HTML+"\n\n"+footerHTML) <= telegramChunk:
+			last.HTML += "\n\n" + footerHTML
+			last.Plain += "\n\n" + footerPlain
+		case last.HTML == "" && utf16Len(last.Plain+"\n\n"+footerPlain) <= telegramChunk:
+			last.Plain += "\n\n" + footerPlain
+		default:
+			chunks = append(chunks, richChunk{HTML: footerHTML, Plain: footerPlain})
+		}
+	}
+	var first int64
+	for _, chunk := range chunks {
+		if ctx.Err() != nil {
+			break
+		}
+		id := sendHTML(ctx, chatID, chunk.HTML, chunk.Plain, nil)
+		if first == 0 {
+			first = id
+		}
+	}
+	return first
+}
+
+// deleteMessage removes one of the bot's own messages; failures are only logged.
+func deleteMessage(ctx context.Context, chatID, msgID int64) {
+	if msgID == 0 {
+		return
+	}
+	tgCallContext(ctx, "deleteMessage", map[string]interface{}{"chat_id": chatID, "message_id": msgID})
 }
 
 // editHTML edits a message with HTML markup, falling back to plain text.

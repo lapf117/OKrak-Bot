@@ -35,45 +35,47 @@ type ASRConf struct {
 }
 
 type Config struct {
-	Token                  string        `json:"token"`
-	OwnerID                int64         `json:"owner_id"`
-	Admins                 []int64       `json:"admins"`
-	Friends                []int64       `json:"friends"`
-	Banned                 []int64       `json:"banned"`
-	Provider               []Provider    `json:"providers"`
-	ProviderName           string        `json:"provider_name"`
-	Model                  string        `json:"model"`
-	SystemPrompt           string        `json:"system_prompt"`
-	Persona                string        `json:"persona"`
-	ReasoningEffort        string        `json:"reasoning_effort"`
-	ShowReasoning          bool          `json:"show_reasoning"`
-	ASR                    ASRConf       `json:"asr"`
-	SkillsDir              string        `json:"skills_dir"`
-	Workspace              string        `json:"workspace"`
-	Backend                string        `json:"backend"`
-	SSH                    SSHConf       `json:"ssh"`
-	MaxSteps               int           `json:"max_steps"`
-	Temperature            float64       `json:"temperature"`
-	MaxHistory             int           `json:"max_history"`
-	Typing                 bool          `json:"typing"`
-	ShowSteps              bool          `json:"show_steps"`
-	FriendTools            string        `json:"friend_tools"`
-	QuickCommands          []QuickCmd    `json:"quick_commands"`
-	Workspaces             []string      `json:"workspaces"`
-	Proxy                  string        `json:"proxy"`
-	NetCheckURLs           []string      `json:"net_check_urls"`
-	ApprovalMode           string        `json:"approval_mode"`
-	ApprovalTimeoutSeconds int           `json:"approval_timeout_seconds"`
-	CommandTimeoutSeconds  int           `json:"command_timeout_seconds"`
-	TaskTimeoutSeconds     int           `json:"task_timeout_seconds"`
-	MaxToolOutput          int           `json:"max_tool_output"`
-	MaxSubagents           int           `json:"max_subagents"`
-	AutoLoadSkills         bool          `json:"auto_load_skills"`
-	AutoFetchSkills        bool          `json:"auto_fetch_skills"`
-	SkillSources           []SkillSource `json:"skill_sources"`
-	SkillAllowedHosts      []string      `json:"skill_allowed_hosts"`
-	Language               string        `json:"language"` // auto | zh | en
-	Timezone               string        `json:"timezone"` // IANA name for daily schedules; empty = host local
+	Token                  string          `json:"token"`
+	OwnerID                int64           `json:"owner_id"`
+	Admins                 []int64         `json:"admins"`
+	Friends                []int64         `json:"friends"`
+	Banned                 []int64         `json:"banned"`
+	Provider               []Provider      `json:"providers"`
+	ProviderName           string          `json:"provider_name"`
+	Model                  string          `json:"model"`
+	SystemPrompt           string          `json:"system_prompt"`
+	Persona                string          `json:"persona"`
+	ReasoningEffort        string          `json:"reasoning_effort"`
+	ShowReasoning          bool            `json:"show_reasoning"`
+	ASR                    ASRConf         `json:"asr"`
+	SkillsDir              string          `json:"skills_dir"`
+	Workspace              string          `json:"workspace"`
+	Backend                string          `json:"backend"`
+	SSH                    SSHConf         `json:"ssh"`
+	MaxSteps               int             `json:"max_steps"`
+	Temperature            float64         `json:"temperature"`
+	MaxHistory             int             `json:"max_history"`
+	Typing                 bool            `json:"typing"`
+	ShowSteps              bool            `json:"show_steps"`
+	Display                map[string]bool `json:"display,omitempty"` // default display switches, see displayItems
+	LLMRetries             int             `json:"llm_retries"`       // silent model API retries; 0 = default 6, -1 = none
+	FriendTools            string          `json:"friend_tools"`
+	QuickCommands          []QuickCmd      `json:"quick_commands"`
+	Workspaces             []string        `json:"workspaces"`
+	Proxy                  string          `json:"proxy"`
+	NetCheckURLs           []string        `json:"net_check_urls"`
+	ApprovalMode           string          `json:"approval_mode"`
+	ApprovalTimeoutSeconds int             `json:"approval_timeout_seconds"`
+	CommandTimeoutSeconds  int             `json:"command_timeout_seconds"`
+	TaskTimeoutSeconds     int             `json:"task_timeout_seconds"`
+	MaxToolOutput          int             `json:"max_tool_output"`
+	MaxSubagents           int             `json:"max_subagents"`
+	AutoLoadSkills         bool            `json:"auto_load_skills"`
+	AutoFetchSkills        bool            `json:"auto_fetch_skills"`
+	SkillSources           []SkillSource   `json:"skill_sources"`
+	SkillAllowedHosts      []string        `json:"skill_allowed_hosts"`
+	Language               string          `json:"language"` // auto | zh | en
+	Timezone               string          `json:"timezone"` // IANA name for daily schedules; empty = host local
 }
 
 var (
@@ -104,6 +106,13 @@ func cloneConfig(c Config) Config {
 	c.NetCheckURLs = append([]string(nil), c.NetCheckURLs...)
 	c.SkillSources = append([]SkillSource(nil), c.SkillSources...)
 	c.SkillAllowedHosts = append([]string(nil), c.SkillAllowedHosts...)
+	if c.Display != nil {
+		display := make(map[string]bool, len(c.Display))
+		for k, v := range c.Display {
+			display[k] = v
+		}
+		c.Display = display
+	}
 	return c
 }
 
@@ -232,6 +241,14 @@ func validateConfig(c Config) error {
 	}
 	if c.Temperature < 0 || c.Temperature > 2 {
 		return fmt.Errorf("temperature 必须在 0..2")
+	}
+	if c.LLMRetries < -1 || c.LLMRetries > 20 {
+		return fmt.Errorf("llm_retries 范围 -1..20（0 表示默认 6 次，-1 表示不重试）")
+	}
+	for key := range c.Display {
+		if findDisplayItem(key) == nil {
+			return fmt.Errorf("display 含未知项 %q，可用：%s", key, strings.Join(displayKeys(), ", "))
+		}
 	}
 	if c.Backend == "ssh" {
 		if c.SSH.Host == "" || c.SSH.User == "" || c.SSH.Port < 1 || c.SSH.Port > 65535 || strings.HasPrefix(c.SSH.Host, "-") || strings.ContainsAny(c.SSH.Host+c.SSH.User, " \t\n\r") {

@@ -138,24 +138,36 @@ func balancedHTML(s string) bool {
 	return len(stack) == 0
 }
 
+// bulletMarks are the list glyphs per nesting level.
+var bulletMarks = []string{"•", "◦", "‣"}
+
 func renderListLine(line string) (string, bool) {
 	if m := bulletRe.FindStringSubmatch(line); m != nil {
-		indent := strings.Repeat("  ", len(strings.ReplaceAll(m[1], "\t", "  "))/2)
+		level := len(strings.ReplaceAll(m[1], "\t", "  ")) / 2
+		indent := strings.Repeat("   ", level)
 		body := m[2]
-		markText := "• "
+		markText := bulletMarks[min(level, len(bulletMarks)-1)] + " "
 		switch {
 		case strings.HasPrefix(body, "[ ] "):
-			markText, body = "[ ] ", body[4:]
+			markText, body = "○ ", body[4:]
 		case strings.HasPrefix(body, "[x] "), strings.HasPrefix(body, "[X] "):
-			markText, body = "[x] ", body[4:]
+			markText, body = "✓ ", body[4:]
 		}
 		return indent + markText + renderInline(body), true
 	}
 	if m := orderedRe.FindStringSubmatch(line); m != nil {
-		indent := strings.Repeat("  ", len(strings.ReplaceAll(m[1], "\t", "  "))/2)
-		return indent + m[2] + ". " + renderInline(m[3]), true
+		indent := strings.Repeat("   ", len(strings.ReplaceAll(m[1], "\t", "  "))/2)
+		return indent + "<b>" + m[2] + ".</b> " + renderInline(m[3]), true
 	}
 	return "", false
+}
+
+// headingHTML gives headings a section bar: level 1–2 "▍Title", deeper "▸ Title".
+func headingHTML(level int, text string) string {
+	if level <= 2 {
+		return "<b>▍" + renderInline(text) + "</b>"
+	}
+	return "<b>▸ " + renderInline(text) + "</b>"
 }
 
 // markdownChunks renders Markdown into Telegram-sized HTML messages. Blocks
@@ -248,10 +260,10 @@ func markdownBlocks(md string, limit int) []richChunk {
 		case headingRe.MatchString(line):
 			flushPara()
 			m := headingRe.FindStringSubmatch(line)
-			blocks = append(blocks, sizedBlock("<b>"+renderInline(m[2])+"</b>", line, limit)...)
+			blocks = append(blocks, sizedBlock(headingHTML(len(m[1]), m[2]), line, limit)...)
 		case hrRe.MatchString(line):
 			flushPara()
-			blocks = append(blocks, richChunk{HTML: "──────────", Plain: "──────────"})
+			blocks = append(blocks, richChunk{HTML: "┈┈┈┈┈┈┈┈┈┈┈┈", Plain: "┈┈┈┈┈┈┈┈┈┈┈┈"})
 		case strings.HasPrefix(trimmed, ">"):
 			flushPara()
 			var quote, raw []string
@@ -261,7 +273,12 @@ func markdownBlocks(md string, limit int) []richChunk {
 				raw = append(raw, lines[i])
 			}
 			i--
-			blocks = append(blocks, sizedBlock("<blockquote>"+strings.Join(quote, "\n")+"</blockquote>", strings.Join(raw, "\n"), limit)...)
+			// Long quotes start collapsed so they do not dominate the answer.
+			open := "<blockquote>"
+			if len(quote) > 6 {
+				open = "<blockquote expandable>"
+			}
+			blocks = append(blocks, sizedBlock(open+strings.Join(quote, "\n")+"</blockquote>", strings.Join(raw, "\n"), limit)...)
 		default:
 			rendered, ok := renderListLine(line)
 			if !ok {

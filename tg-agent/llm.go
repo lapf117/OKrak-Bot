@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -102,12 +103,74 @@ type chatResponse struct {
 
 var llmClient = &http.Client{Timeout: 300 * time.Second}
 
+// Model API failures are retried silently in the background: the user only
+// sees the task keep running. llmRetryBase is the first back-off step; it
+// doubles per attempt up to llmRetryCap. Tests shorten both.
+var (
+	llmRetryBase = time.Second
+	llmRetryCap  = 30 * time.Second
+)
+
+const defaultLLMRetries = 6
+
+// llmRetries is the number of extra attempts after the first request.
+func llmRetries(c Config) int {
+	if c.LLMRetries < 0 {
+		return 0
+	}
+	if c.LLMRetries == 0 {
+		return defaultLLMRetries
+	}
+	return c.LLMRetries
+}
+
+// retryDelay is the wait before retry number n (1-based): exponential
+// back-off with a little jitter, or the server's Retry-After when given.
+func retryDelay(n int, retryAfter time.Duration) time.Duration {
+	if retryAfter > 0 {
+		return min(retryAfter, 60*time.Second)
+	}
+	d := llmRetryBase
+	for i := 1; i < n && d < llmRetryCap; i++ {
+		d *= 2
+	}
+	d = min(d, llmRetryCap)
+	if jitter := int64(d / 4); jitter > 0 {
+		d += time.Duration(rand.Int64N(jitter))
+	}
+	return d
+}
+
+// llmAttemptError describes one failed request and whether retrying can help.
+type llmAttemptError struct {
+	err        error
+	retryable  bool
+	retryAfter time.Duration
+}
+
+// permanentModelError reports provider errors that a retry cannot fix.
+func permanentModelError(text string) bool {
+	low := strings.ToLower(text)
+	for _, marker := range []string{"invalid", "auth", "api key", "api_key", "permission", "forbidden", "not found", "not_found", "unsupported", "context length", "context_length", "maximum context", "too long", "content_filter", "content filter", "insufficient", "balance", "quota"} {
+		if strings.Contains(low, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func retryableStatus(code int) bool {
+	return code == http.StatusRequestTimeout || code == http.StatusConflict || code == http.StatusTooEarly || code == http.StatusTooManyRequests || code >= 500
+}
+
 func chat(messages []LLMMessage, schemas []ToolSchema) (*chatResponse, error) {
 	return chatContext(WithExecutionConfig(context.Background(), configSnapshot()), messages, schemas)
 }
 
 // chatContext calls an OpenAI-compatible Chat Completions endpoint with the
-// task's frozen provider settings, retrying 429/5xx and transport failures.
+// task's frozen provider settings. Transport failures, 408/409/425/429/5xx,
+// gateway garbage and transient provider errors are retried silently with
+// exponential back-off; definitive errors (bad request, auth) fail at once.
 func chatContext(ctx context.Context, messages []LLMMessage, schemas []ToolSchema) (*chatResponse, error) {
 	c := executionConfig(ctx)
 	p := providerFor(c)
@@ -149,75 +212,94 @@ func chatContext(ctx context.Context, messages []LLMMessage, schemas []ToolSchem
 		}
 		client = &clone
 	}
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
+	retries := llmRetries(c)
+	var last *llmAttemptError
+	for attempt := 0; attempt <= retries; attempt++ {
+		if attempt > 0 {
+			delay := retryDelay(attempt, last.retryAfter)
+			logf("模型请求失败，%s 后静默重试（%d/%d）: %s", delay.Round(100*time.Millisecond), attempt, retries, short(last.err.Error(), 200))
+			recordRetry(ctx)
+			if err := waitContext(ctx, delay); err != nil {
+				return nil, err
+			}
+		}
 		if err := checkExecutionAccess(ctx); err != nil {
 			return nil, err
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-		if err != nil {
-			return nil, fmt.Errorf("无效模型地址")
+		cr, failure := chatAttempt(ctx, client, endpoint, p.APIKey, body)
+		if failure == nil {
+			return cr, nil
 		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+p.APIKey)
-		resp, err := client.Do(req)
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			lastErr = fmt.Errorf("模型连接失败: %s", redactExecutionSecrets(ctx, err.Error()))
-			if attempt < 2 {
-				if err = waitContext(ctx, time.Duration(attempt+1)*time.Second); err != nil {
-					return nil, err
-				}
-			}
-			continue
-		}
-		raw, readErr := io.ReadAll(io.LimitReader(resp.Body, (8<<20)+1))
-		resp.Body.Close()
 		if err := checkExecutionAccess(ctx); err != nil {
 			return nil, err
 		}
-		if readErr != nil {
-			return nil, fmt.Errorf("读取模型响应失败: %s", redactExecutionSecrets(ctx, readErr.Error()))
+		if !failure.retryable {
+			return nil, failure.err
 		}
-		if len(raw) > 8<<20 {
-			return nil, fmt.Errorf("模型响应超过 8 MiB")
-		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			lastErr = fmt.Errorf("模型 HTTP %d: %s", resp.StatusCode, short(redactExecutionSecrets(ctx, string(raw)), 500))
-			if resp.StatusCode != 429 && resp.StatusCode < 500 {
-				return nil, lastErr
-			}
-			if attempt < 2 {
-				delay := time.Duration(attempt+1) * 2 * time.Second
-				if seconds, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && seconds > 0 {
-					delay = time.Duration(min(seconds, 30)) * time.Second
-				}
-				if err := waitContext(ctx, delay); err != nil {
-					return nil, err
-				}
-			}
-			continue
-		}
-		var cr chatResponse
-		if err := json.Unmarshal(raw, &cr); err != nil {
-			return nil, fmt.Errorf("模型返回无效 JSON: %v", err)
-		}
-		if cr.Error != nil {
-			return nil, fmt.Errorf("模型报错: %s", short(redactExecutionSecrets(ctx, cr.Error.Message), 500))
-		}
-		if len(cr.Choices) == 0 {
-			return nil, fmt.Errorf("模型没有返回 choices")
-		}
-		recordUsage(ctx, cr.Usage.PromptTokens, cr.Usage.CompletionTokens)
-		if cr.Choices[0].FinishReason == "length" && len(cr.Choices[0].Message.ToolCalls) > 0 {
-			return nil, fmt.Errorf("模型输出被截断，工具参数不完整；请提高服务端输出限额")
-		}
-		if cr.Choices[0].FinishReason == "length" {
-			cr.Choices[0].Message.Content = textOf(cr.Choices[0].Message) + "\n\n" + tr(ctxLang(ctx), "agent.truncated")
-		}
-		return &cr, nil
+		last = failure
 	}
-	return nil, fmt.Errorf("模型请求重试失败: %v", lastErr)
+	return nil, fmt.Errorf("模型请求已自动重试 %d 次仍失败: %v", retries, last.err)
+}
+
+// chatAttempt performs one request and classifies any failure.
+func chatAttempt(ctx context.Context, client *http.Client, endpoint, apiKey string, body []byte) (*chatResponse, *llmAttemptError) {
+	retry := func(err error) *llmAttemptError { return &llmAttemptError{err: err, retryable: true} }
+	fail := func(err error) *llmAttemptError { return &llmAttemptError{err: err} }
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, fail(fmt.Errorf("无效模型地址"))
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := client.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, fail(ctx.Err())
+		}
+		return nil, retry(fmt.Errorf("模型连接失败: %s", redactExecutionSecrets(ctx, err.Error())))
+	}
+	raw, readErr := io.ReadAll(io.LimitReader(resp.Body, (8<<20)+1))
+	resp.Body.Close()
+	if ctx.Err() != nil {
+		return nil, fail(ctx.Err())
+	}
+	if readErr != nil {
+		return nil, retry(fmt.Errorf("读取模型响应失败: %s", redactExecutionSecrets(ctx, readErr.Error())))
+	}
+	if len(raw) > 8<<20 {
+		return nil, fail(fmt.Errorf("模型响应超过 8 MiB"))
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		failure := &llmAttemptError{err: fmt.Errorf("模型 HTTP %d: %s", resp.StatusCode, short(redactExecutionSecrets(ctx, string(raw)), 500))}
+		if retryableStatus(resp.StatusCode) {
+			failure.retryable = true
+			if seconds, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && seconds > 0 {
+				failure.retryAfter = time.Duration(seconds) * time.Second
+			}
+		}
+		return nil, failure
+	}
+	var cr chatResponse
+	if err := json.Unmarshal(raw, &cr); err != nil {
+		// Gateways sometimes answer 200 with an HTML error page.
+		return nil, retry(fmt.Errorf("模型返回无效 JSON: %v", err))
+	}
+	if cr.Error != nil {
+		failure := fmt.Errorf("模型报错: %s", short(redactExecutionSecrets(ctx, cr.Error.Message), 500))
+		if permanentModelError(cr.Error.Type + " " + cr.Error.Message) {
+			return nil, fail(failure)
+		}
+		return nil, retry(failure)
+	}
+	if len(cr.Choices) == 0 {
+		return nil, retry(fmt.Errorf("模型没有返回 choices"))
+	}
+	recordUsage(ctx, cr.Usage.PromptTokens, cr.Usage.CompletionTokens)
+	if cr.Choices[0].FinishReason == "length" && len(cr.Choices[0].Message.ToolCalls) > 0 {
+		return nil, fail(fmt.Errorf("模型输出被截断，工具参数不完整；请提高服务端输出限额"))
+	}
+	if cr.Choices[0].FinishReason == "length" {
+		cr.Choices[0].Message.Content = textOf(cr.Choices[0].Message) + "\n\n" + tr(ctxLang(ctx), "agent.truncated")
+	}
+	return &cr, nil
 }

@@ -75,8 +75,10 @@ func handleCallback(cb CallbackQuery) {
 	case data == "act:stop":
 		// The dispatcher already cancelled the task; the panel updates itself.
 		toast = tr(lang, "task.stopping")
-	case data == "act:retry":
+	case data == "act:retry": // buttons on answers sent by earlier versions
 		retryLastTask(chatID, uid)
+	case data == "nav:display", strings.HasPrefix(data, "show:"):
+		toast = handleDisplayCallback(chatID, msgID, uid, data)
 	case data == "act:lang":
 		next := langEN
 		if lang == langEN {
@@ -405,16 +407,17 @@ func handleCallback(cb CallbackQuery) {
 	}
 }
 
+// roleIcon marks a user's role with a plain symbol.
 func roleIcon(id int64) string {
 	switch {
 	case isOwner(id):
-		return ""
+		return "★"
 	case isBanned(id):
-		return ""
+		return "✗"
 	case isAdmin(id):
-		return ""
+		return "◆"
 	case isFriend(id):
-		return ""
+		return "●"
 	}
 	return "·"
 }

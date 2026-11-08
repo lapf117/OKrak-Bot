@@ -57,7 +57,9 @@ func runUserTaskOpts(chatID, uid int64, text string, images []string, opts taskO
 	ctx = withTaskBudget(withLang(ctx, lang), c)
 	lastTasks.Store(chatID, lastTask{Text: text, Images: images})
 
-	panel := newProgressPanel(lang, stepsDetailed(uid, c), opts.Origin)
+	show := displayFor(uid, c)
+	panel := newTaskPanel(lang, show, opts.Origin)
+	panel.stats = func() taskStats { return statsOf(ctx) }
 	// The live panel carries no buttons: to stop, the user sends /stop.
 	msgID := sendHTML(ctx, chatID, panel.render(), "", nil)
 
@@ -65,7 +67,11 @@ func runUserTaskOpts(chatID, uid int64, text string, images []string, opts taskO
 	var lastEdit time.Time
 	var lastBody string
 	refresh := func(force bool) {
-		renderMu.Lock()
+		// Never let a slow or retrying Telegram edit hold up the agent: when
+		// another edit is in flight, skip; the next event or tick catches up.
+		if !renderMu.TryLock() {
+			return
+		}
 		defer renderMu.Unlock()
 		// Telegram allows roughly one edit per second per chat; tool results
 		// (force) may refresh a little sooner than background ticks.
@@ -106,7 +112,7 @@ func runUserTaskOpts(chatID, uid int64, text string, images []string, opts taskO
 	onStep := func(ev StepEvent) {
 		panel.apply(ev)
 		if !ev.Final {
-			refresh(ev.Done || ev.Note != "")
+			refresh(ev.Done || ev.Note != "" || ev.Reasoning != "")
 		}
 	}
 
@@ -117,49 +123,52 @@ func runUserTaskOpts(chatID, uid int64, text string, images []string, opts taskO
 	renderMu.Lock() // wait for an in-flight edit before the final one
 	renderMu.Unlock()
 
-	tools, prompt, completion := taskUsageDetailed(ctx)
-	tokens := prompt + completion
-	if tokens > 0 {
+	stats := statsOf(ctx)
+	if tokens := stats.Tokens(); tokens > 0 {
 		lastUsage.Store(chatID, tokens)
 	}
-	recordTaskUsage(tools, prompt, completion)
+	recordTaskUsage(stats.Tools, stats.Prompt, stats.Completion)
 	trace := panel.snapshot()
 	finalCtx, cancelFinal := context.WithTimeout(telegramContext, 30*time.Second)
 	defer cancelFinal()
-	menuKB := answerKeyboard(lang, uid, "")
 
+	// Final answers carry no buttons: /new, /continue and /menu stay available as commands.
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 		reason := tr(lang, "task.stopped")
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			reason = tr(lang, "task.timeout")
 		}
-		writeRunLog(chatID, redactExecutionSecrets(ctx, text), trace, reason, dur, tools, tokens)
-		if !editHTML(finalCtx, chatID, msgID, panel.renderFinal(reason), "", menuKB) {
-			sendUI(chatID, esc(reason), menuKB)
+		writeRunLog(chatID, redactExecutionSecrets(ctx, text), trace, reason, dur, stats)
+		if !editHTML(finalCtx, chatID, msgID, panel.renderFinal("■", reason), "", nil) {
+			sendUI(chatID, "<b>■ "+esc(reason)+"</b>", nil)
 		}
 		return true
 	}
 	if err != nil {
 		msg := redactExecutionSecrets(ctx, err.Error())
-		writeRunLog(chatID, redactExecutionSecrets(ctx, text), trace, "执行失败："+msg, dur, tools, tokens)
-		editHTML(finalCtx, chatID, msgID, panel.renderFinal(tr(lang, "task.failed")), "", nil)
-		sendHTML(finalCtx, chatID, "<b>"+esc(tr(lang, "task.failed"))+"</b>\n<pre>"+esc(short(msg, 1500))+"</pre>", "", menuKB)
+		writeRunLog(chatID, redactExecutionSecrets(ctx, text), trace, "执行失败："+msg, dur, stats)
+		editHTML(finalCtx, chatID, msgID, panel.renderFinal("✗", tr(lang, "task.failed")), "", nil)
+		sendHTML(finalCtx, chatID, failureHTML(lang, msg), "", nil)
 		return true
 	}
 
-	out = strings.TrimSpace(redactExecutionSecrets(ctx, out))
-	if out == "" {
+	out = stripEmojiMarkdown(strings.TrimSpace(redactExecutionSecrets(ctx, out)))
+	if strings.TrimSpace(out) == "" {
 		out = tr(lang, "task.no_output")
 	}
-	runPath := writeRunLog(chatID, redactExecutionSecrets(ctx, text), trace, out, dur, tools, tokens)
-	editHTML(finalCtx, chatID, msgID, panel.renderFinal(tr(lang, "task.done")), "", nil)
-
-	footer := humanDuration(dur)
-	if tools > 0 {
-		footer += " · " + fmt.Sprint(tools) + " tools"
+	writeRunLog(chatID, redactExecutionSecrets(ctx, text), trace, out, dur, stats)
+	finalPanel := func() { editHTML(finalCtx, chatID, msgID, panel.renderFinal("✓", tr(lang, "task.done")), "", nil) }
+	if show["keep"] {
+		finalPanel() // collapse first so the panel never looks stuck while the answer is prepared
 	}
-	if tokens > 0 {
-		footer += " · " + humanTokens(tokens) + " tokens"
+
+	footer := ""
+	if hasFooter(show) {
+		f := footerData{Elapsed: dur, Stats: stats, Model: c.Model}
+		if show["balance"] {
+			f.Balance = footerBalance(finalCtx, c)
+		}
+		footer = renderFooter(lang, show, f)
 	}
 	answer := out
 	var attachment []byte
@@ -167,7 +176,14 @@ func runUserTaskOpts(chatID, uid int64, text string, images []string, opts taskO
 		attachment = []byte(out)
 		answer = cutAtParagraph(out, 3000) + "\n\n" + tr(lang, "task.see_attachment")
 	}
-	sendRich(finalCtx, chatID, answer+"\n\n*"+footer+"*", answerKeyboard(lang, uid, filepath.Base(runPath)))
+	answerID := sendAnswer(finalCtx, chatID, answer, footer)
+	switch {
+	case show["keep"]:
+	case answerID != 0:
+		deleteMessage(finalCtx, chatID, msgID) // "keep" off: only the answer stays
+	default:
+		finalPanel() // the answer did not arrive; keep the panel as the record
+	}
 	if attachment != nil {
 		sendMedia(chatID, "sendDocument", "document", attachment, "reply-"+time.Now().Format("20060102-150405")+".md", tr(lang, "task.attachment_caption"))
 	}
@@ -177,15 +193,20 @@ func runUserTaskOpts(chatID, uid int64, text string, images []string, opts taskO
 	return true
 }
 
-// answerKeyboard is attached to final answers: new chat, retry, menu and (for
-// admins) the run log of this task.
-func answerKeyboard(lang string, uid int64, runName string) interface{} {
-	row := []Btn{btn(tr(lang, "btn.new"), "act:new"), btn(tr(lang, "btn.retry"), "act:retry"), btn(tr(lang, "btn.menu"), "nav:root")}
-	rows := [][]Btn{row}
-	if runName != "" && runName != "." && isAdmin(uid) && len("runlog:"+runName) <= 64 {
-		rows = append(rows, []Btn{btn(tr(lang, "btn.runlog"), "runlog:"+runName)})
+// hasFooter reports whether any statistics switch is on.
+func hasFooter(d display) bool {
+	for _, it := range displayItems {
+		if it.Group == displayGroupFooter && d[it.Key] {
+			return true
+		}
 	}
-	return keyboard(rows)
+	return false
+}
+
+// failureHTML is the message sent when a task ends with an error: a short
+// title, the error collapsed, and a hint to run the task again.
+func failureHTML(lang, msg string) string {
+	return "<b>✗ " + esc(tr(lang, "task.failed")) + "</b>\n<blockquote expandable>" + esc(short(msg, 1500)) + "</blockquote>\n<i>" + esc(tr(lang, "task.failed_hint")) + "</i>"
 }
 
 // cutAtParagraph returns roughly the first n runes, ending at a paragraph or line.
@@ -208,7 +229,7 @@ func cutAtParagraph(s string, n int) string {
 }
 
 // writeRunLog stores the full run as Markdown under runs/.
-func writeRunLog(chatID int64, task string, trace []progressAction, final string, dur time.Duration, tools, tokens int64) string {
+func writeRunLog(chatID int64, task string, trace []progressAction, final string, dur time.Duration, stats taskStats) string {
 	dir := filepath.Join(baseDir, "runs")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return ""
@@ -217,10 +238,14 @@ func writeRunLog(chatID int64, task string, trace []progressAction, final string
 	p := filepath.Join(dir, fmt.Sprintf("%s-%d.md", now.Format("20060102-150405.000000000"), chatID))
 	var b strings.Builder
 	b.WriteString("# 执行记录 / Run log\n\n")
-	fmt.Fprintf(&b, "- 时间：%s\n- 耗时：%s\n- 工具调用：%d\n- Tokens：%d\n\n", now.Format("2006-01-02 15:04:05"), humanDuration(dur), tools, tokens)
+	fmt.Fprintf(&b, "- 时间：%s\n- 耗时：%s\n- 模型调用：%d\n- 工具调用：%d\n- 命令：%d\n- 静默重试：%d\n- Tokens：%d（输入 %d / 输出 %d）\n\n", now.Format("2006-01-02 15:04:05"), humanDuration(dur), stats.Calls, stats.Tools, stats.Commands, stats.Retries, stats.Tokens(), stats.Prompt, stats.Completion)
 	b.WriteString("## 任务\n\n" + task + "\n\n")
 	for i, t := range trace {
-		fmt.Fprintf(&b, "## %d. %s · `%s`\n\n", i+1, toolLabel(langZH, t.Tool), t.Tool)
+		fmt.Fprintf(&b, "## %d. %s · `%s`", i+1, toolLabel(langZH, t.Tool), t.Tool)
+		if t.Done {
+			fmt.Fprintf(&b, " · %s", stepDuration(t.Took))
+		}
+		b.WriteString("\n\n")
 		if t.Intent != "" {
 			b.WriteString("> " + t.Intent + "\n\n")
 		}

@@ -29,7 +29,34 @@ type executionBudget struct {
 	ToolCalls        int64
 	PromptTokens     int64
 	CompletionTokens int64
+	ModelCalls       int64 // successful model API responses
+	Commands         int64 // shell commands run by the bash tool
+	Retries          int64 // silent model API retries
 	approveAll       int32 // set when the user approves every action of this task
+}
+
+// taskStats is a snapshot of one task's counters for the panel, footer and run log.
+type taskStats struct {
+	Calls, Tools, Commands, Retries int64
+	Prompt, Completion              int64
+}
+
+func (s taskStats) Tokens() int64 { return s.Prompt + s.Completion }
+
+// statsOf reads the shared counters of the running task (zero without a budget).
+func statsOf(ctx context.Context) taskStats {
+	b := budgetOf(ctx)
+	if b == nil {
+		return taskStats{}
+	}
+	return taskStats{
+		Calls:      atomic.LoadInt64(&b.ModelCalls),
+		Tools:      atomic.LoadInt64(&b.ToolCalls),
+		Commands:   atomic.LoadInt64(&b.Commands),
+		Retries:    atomic.LoadInt64(&b.Retries),
+		Prompt:     atomic.LoadInt64(&b.PromptTokens),
+		Completion: atomic.LoadInt64(&b.CompletionTokens),
+	}
 }
 
 // WithExecutionConfig freezes connection, workspace and limits for an entire task.
@@ -91,8 +118,21 @@ func consumeStep(ctx context.Context) error {
 
 func recordUsage(ctx context.Context, prompt, completion int) {
 	if b := budgetOf(ctx); b != nil {
+		atomic.AddInt64(&b.ModelCalls, 1)
 		atomic.AddInt64(&b.PromptTokens, int64(prompt))
 		atomic.AddInt64(&b.CompletionTokens, int64(completion))
+	}
+}
+
+func recordRetry(ctx context.Context) {
+	if b := budgetOf(ctx); b != nil {
+		atomic.AddInt64(&b.Retries, 1)
+	}
+}
+
+func recordCommand(ctx context.Context) {
+	if b := budgetOf(ctx); b != nil {
+		atomic.AddInt64(&b.Commands, 1)
 	}
 }
 

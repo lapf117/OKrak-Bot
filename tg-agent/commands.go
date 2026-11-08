@@ -45,6 +45,8 @@ func handleCommand(chatID, uid int64, t, low string) bool {
 		handleLangCommand(chatID, uid, rest)
 	case "/steps", "/verbose":
 		handleStepsCommand(chatID, uid, rest)
+	case "/show", "/display", "/footer", "/显示":
+		handleShowCommand(chatID, uid, rest)
 	case "/memory", "/mem":
 		return handleMemoryCommand(chatID, uid, rest)
 	case "/export":
@@ -383,15 +385,15 @@ func cronKeyboard(lang string) interface{} {
 			break
 		}
 		id := strconv.Itoa(j.ID)
-		row := []Btn{btn("#"+id, "cron:run:"+id)}
+		row := []Btn{btn(tr(lang, "cron.run")+" #"+id, "cron:run:"+id)}
 		switch {
 		case j.Done:
 		case j.Enabled:
-			row = append(row, btn("#"+id, "cron:pause:"+id))
+			row = append(row, btn(tr(lang, "cron.pause")+" #"+id, "cron:pause:"+id))
 		default:
 			row = append(row, btn(tr(lang, "cron.resume")+" #"+id, "cron:resume:"+id))
 		}
-		rows = append(rows, append(row, btn("#"+id, "cron:del:"+id)))
+		rows = append(rows, append(row, btn(tr(lang, "cron.del")+" #"+id, "cron:del:"+id)))
 	}
 	rows = append(rows, []Btn{btn(tr(lang, "btn.refresh"), "act:cron"), btn(tr(lang, "btn.back"), "nav:root")})
 	return keyboard(rows)
