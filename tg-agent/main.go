@@ -15,7 +15,7 @@ import (
 )
 
 var configFile string
-var version = "2.3.0"
+var version = "2.4.0"
 
 // botCommands is the short command menu every user sees.
 var botCommands = []struct{ name, zh, en string }{
@@ -29,9 +29,9 @@ var botCommands = []struct{ name, zh, en string }{
 }
 
 // adminCommands are added to the menu only in the owner's and admins' chats.
+// Everything else is managed in the server terminal (tg-agent admin).
 var adminCommands = []struct{ name, zh, en string }{
 	{"settings", "设置：模型、执行模式、推理", "Settings: model, mode, reasoning"},
-	{"admin", "管理后台", "Admin console"},
 	{"usage", "用量与余额", "Usage and balance"},
 }
 
@@ -95,12 +95,21 @@ func runMain() int {
 	check := flag.Bool("check", false, "只验证配置，不连接 Telegram 或模型服务 / validate config only")
 	showVersion := flag.Bool("version", false, "显示版本 / print version")
 	flag.StringVar(&configFile, "config", "", "配置文件路径，默认查找当前目录或程序目录的 config.json")
+	flag.Usage = func() {
+		out := flag.CommandLine.Output()
+		fmt.Fprintln(out, "用法 / usage:")
+		fmt.Fprintln(out, "  tg-agent [--config config.json]            启动机器人 / run the bot")
+		fmt.Fprintln(out, "  tg-agent [--config config.json] admin      服务器终端管理 / terminal admin")
+		fmt.Fprintln(out, "  tg-agent [--config config.json] admin help 管理命令说明 / admin commands")
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 	if *showVersion {
 		fmt.Println("tg-agent " + version)
 		return 0
 	}
-	if flag.NArg() > 0 {
+	adminMode := flag.NArg() > 0 && isAdminSubcommand(flag.Arg(0))
+	if flag.NArg() > 0 && !adminMode {
 		fmt.Fprintln(os.Stderr, "未知参数；使用 --help 查看帮助")
 		return 2
 	}
@@ -123,6 +132,10 @@ func runMain() int {
 	if err := loadConfig(); err != nil {
 		fmt.Fprintf(os.Stderr, "读取配置失败: %v\n配置路径: %s\n", err, configPath())
 		return 1
+	}
+	if adminMode {
+		loadCron()
+		return runAdminCLI(flag.Args()[1:], os.Stdin, os.Stdout, os.Stderr)
 	}
 	if err := mustConfig(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -172,6 +185,8 @@ func runMain() int {
 	registerCommands()
 	loadCron()
 	startCron()
+	stopAdmin := startAdminSocket(telegramContext) // tg-agent admin talks to the live bot here
+	defer stopAdmin()
 	pollUpdates(newUpdateDispatcher(16, 8, handleMessage, handleCallback))
 	logf("已退出")
 	return 0

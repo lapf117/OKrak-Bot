@@ -33,10 +33,6 @@ func handleMessage(m Message) {
 		handleGuest(m, t, low) // banned notice, or the sign-up page
 		return
 	}
-	// After an admin taps an input button in the console, the next text is the value.
-	if !hasMedia && handlePendingInput(chatID, uid, t, low) {
-		return
-	}
 	switch low {
 	case "/start", "/menu", "menu", "菜单":
 		sendMenu(chatID, uid)

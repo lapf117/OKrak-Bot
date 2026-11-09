@@ -26,6 +26,12 @@
 
 如使用 systemd，请将服务用户、可写目录和 EnvironmentFile 按部署实际位置修改。启动失败返回非零退出码，模板可自动重启。
 
+## 2.3 → 2.4
+
+- 管理入口改为服务器终端：`sudo -u tgagent /opt/tg-agent/tg-agent --config /opt/tg-agent/config.json admin`（容器：`docker compose exec agent tg-agent --config /app/config.json admin`）。Telegram 中的 `/admin` 面板与管理命令已移除。
+- 机器人运行时会在数据目录创建 `admin.sock`（权限 0600），退出时删除；它是终端与机器人通信用的，不要放进备份或版本库。
+- 配置项没有变化。
+
 ## 2.2 → 2.3
 
 - 新增可选配置：`registration`（默认 `approval`）、`bot_name`、`author`、`support_text`、`support_url`。**行为变化**：默认允许陌生人提交注册申请，管理员会收到审核通知；如需保持只能按 ID 添加，设置 `"registration": "off"`。

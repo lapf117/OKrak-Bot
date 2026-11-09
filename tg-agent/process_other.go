@@ -3,6 +3,7 @@
 package main
 
 import (
+	"os"
 	"os/exec"
 	"time"
 )
@@ -13,3 +14,5 @@ func killProcessTree(cmd *exec.Cmd) {
 		_ = cmd.Process.Kill()
 	}
 }
+
+func inheritOwner(f *os.File, target string) {}

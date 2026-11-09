@@ -1,5 +1,7 @@
-# 大肥鱼 Telegram Agent 2.3
+# 大肥鱼 Telegram Agent 2.4
 
+> 2.4.0：管理功能从 Telegram 移到 **服务器终端**：在服务器上运行 `tg-agent admin` 打开中文编号菜单（用户、注册审核、公告、名称与作者、服务商、工作区、提示词、定时任务、快捷指令、技能、自检、日志、配置、执行记录），也可直接执行单条命令。Telegram 里只保留用户菜单与管理员的“模型 / 执行模式 / 推理”设置。
+>
 > 2.3.0：菜单精简——设置只保留模型、执行模式、推理；人设、系统提示词、高级、工作区、定时任务、快捷指令、技能等移入仅管理员可见的管理后台（`/admin`）。新增用户注册与审核、公告发布（后台预览后推送）、支持作者页与可自定义名称。回复下方的统计行默认不再显示余额。
 >
 > 2.2.0：回复下方不再附带“新对话 / 重试 / 菜单 / 执行记录”按钮；模型接口报错在后台静默重试；过程面板重新设计（计划、思考、步骤、耗时），回复末尾显示耗时、调用、工具、命令、Token、余额统计，每一项都能用 `/show` 单独开关。全程禁用 emoji，只用 ✓ ✗ ▸ ● ▍ 等文本符号与粗体排版。
@@ -53,24 +55,72 @@ export LLM_API_KEY='你的模型 API key'
 | `/about` | 支持作者：作者、支持说明与链接 |
 | `/memory` `/lang` | 长期备忘、切换语言 |
 
-管理员的“设置”（`/settings`）只有 **模型、执行模式、推理** 三项。Telegram 命令菜单对普通用户只列出 menu、new、stop、show、notice、about、help；管理员的私聊里额外列出 settings、admin、usage。
+管理员在 Telegram 里只有“设置”（`/settings`：**模型、执行模式、推理**）和“用量”。Telegram 命令菜单对普通用户只列出 menu、new、stop、show、notice、about、help；管理员的私聊里额外列出 settings、usage。
 
-**管理后台（`/admin`，仅管理员）**
+## 服务器终端管理
 
-人设、系统提示词、服务商、工作区、定时任务、快捷指令、技能、自检、日志、配置总览都从用户菜单中移除，集中在管理后台，同时新增：
+其余管理都在服务器的 Linux 终端完成，不出现在 Telegram 的菜单或命令里。登录服务器后运行：
 
-| 后台入口 | 用途 |
+```bash
+# systemd 部署（以服务用户运行，文件归属不变；用 sudo 以 root 运行也可以）
+sudo -u tgagent /opt/tg-agent/tg-agent --config /opt/tg-agent/config.json admin
+# 容器部署
+docker compose exec agent tg-agent --config /app/config.json admin
+```
+
+会打开一个编号菜单：
+
+```text
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ AI Agent 云端 · v2.4.0 · 终端管理
+ ● 机器人运行中，修改立即生效
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 用户 4 人 · 待审核 1 · 公告 1 条
+ 注册方式 需审核 · 模型 deepseek-chat · 执行模式 人工确认 · 推理 默认（不发送）
+
+   1  用户管理       2  注册审核
+   3  发布公告       4  名称与作者
+   5  服务商         6  工作区
+   7  系统提示词     8  人设
+   9  定时任务      10  快捷指令
+  11  技能          12  自检
+  13  运行日志      14  配置总览
+  15  执行记录
+   0  退出
+请选择 >
+```
+
+| 菜单 | 内容 |
 | --- | --- |
-| 用户管理 | 设为管理员、朋友、封禁 |
-| 注册审核 | 待审核申请（通过 / 拒绝），切换注册方式：关闭 / 需审核 / 开放 |
-| 发布公告 | 点按后直接发送公告内容 → 预览 → 确认后推送给全部用户；可删除旧公告 |
-| 名称与作者 | 修改机器人名称、作者、支持说明（Markdown）和支持链接，发送 `-` 清空 |
+| 用户管理 | 添加 / 移除管理员、用户（朋友），封禁 / 解封 |
+| 注册审核 | 查看待审核申请，按序号或 ID 通过、拒绝、封禁；切换注册方式 关闭 / 需审核 / 开放 |
+| 发布公告 | 输入内容（多行，单独一行 `.` 结束）→ 预览 → 确认后推送给全部用户并显示送达人数；删除旧公告 |
+| 名称与作者 | 机器人名称、作者、支持说明（Markdown）、支持链接，输入 `-` 清空 |
+| 服务商 / 工作区 | 切换、添加、删除服务商；切换、收藏、移除工作区 |
+| 系统提示词 / 人设 | 查看、修改（多行）、清空 |
+| 定时任务 / 快捷指令 | 添加（如 `daily 09:00` + 任务内容）、删除、暂停、恢复、立即运行；添加、删除快捷指令 |
+| 技能 / 自检 / 运行日志 / 配置总览 / 执行记录 | 技能列表、安装与同步；模型与执行后端自检；查看日志、配置与最近的执行记录 |
 
-后台命令：`/mode` `/cron` `/cmd` `/ws` `/runs` `/file` `/health` `/skills` `/announce 内容` `/admin add|rem ID` `/friend` `/ban` `/provider` `/system` `/persona` `/status` `/export`。技能由 AI 自动匹配与加载（`list_skills` / `load_skill`），`/skills` 仅管理员可用。
+每一项也能直接作为命令执行，方便脚本或快速操作（`tg-agent admin help` 查看全部）：
 
-**用户注册**：`registration` 为 `approval`（默认）时，陌生人发送任意消息会看到注册页，点“申请注册”或发送 `/register 备注` 后，所有管理员收到带“通过 / 拒绝 / 封禁”按钮的通知；通过后对方成为朋友（受 `friend_tools` 限制）并收到欢迎消息，被拒绝后 24 小时内不能再申请。`open` 为注册即可用（会消耗你的模型额度，谨慎开启），`off` 恢复为只能由管理员按 ID 添加。
+```bash
+tg-agent admin status
+tg-agent admin reg approve 5005
+tg-agent admin users add admin 123456789
+tg-agent admin brand set name AI Agent 云端
+tg-agent admin notice publish 今晚 22:00 维护        # 直接发布，不预览
+echo "多行公告" | tg-agent admin notice publish -     # 从标准输入读取
+tg-agent admin cron add daily 09:00 汇总服务器状态
+tg-agent admin log 100
+```
 
-**公告**：管理员确认后逐个推送给主人、管理员和朋友（跳过封禁用户），完成后在预览消息上显示送达人数；用户随时可在菜单“公告”或 `/notice` 查看最近的公告。公告保存在 `announcements.json`，注册申请保存在 `registrations.json`。
+**如何生效**：机器人运行时会在数据目录创建仅服务用户可读写的 `admin.sock`，终端的每个操作都发给运行中的机器人执行，立即生效，也不会和机器人自己的写入冲突。机器人未运行时，终端直接修改 `config.json` 等文件，下次启动生效；以 root 运行时新文件的属主会沿用原文件，服务用户仍可读取。在机器人运行时手动编辑了 `config.json`，下一次修改设置前会先重新读取它；文件有语法错误时不会被覆盖。
+
+技能由 AI 自动匹配与加载（`list_skills` / `load_skill`），只能在终端里查看、安装与同步。
+
+**用户注册**：`registration` 为 `approval`（默认）时，陌生人发送任意消息会看到注册页，点“申请注册”或发送 `/register 备注` 后，所有管理员会在 Telegram 收到一条提醒（不带按钮，附带审核用的终端命令），在服务器终端的“注册审核”里处理；通过后对方成为朋友（受 `friend_tools` 限制）并收到欢迎消息，被拒绝后 24 小时内不能再申请。`open` 为注册即可用（会消耗你的模型额度，谨慎开启），`off` 恢复为只能由管理员按 ID 添加。
+
+**公告**：在服务器终端发布，确认后逐个推送给主人、管理员和朋友（跳过封禁用户），完成后显示送达人数；用户随时可在菜单“公告”或 `/notice` 查看最近的公告。公告保存在 `announcements.json`，注册申请保存在 `registrations.json`。
 
 ## 显示与统计
 
@@ -131,7 +181,7 @@ export LLM_API_KEY='你的模型 API key'
 
 管理员可在 `config.json` 的 `display` 中修改全员默认值，用户自己的选择优先。答复中的 emoji 会被自动替换为文本符号（✅ → ✓、➡️ → →）或删除，代码块与行内代码保持原样；系统提示词也要求模型只用粗体、标题、列表和文本符号排版。
 
-兼容原有 `/model`、`/provider`、`/effort`、`/system`、`/persona`、`/ws`、`/cmd`、`/cron`、`/admin`、`/friend`、`/ban`。机器人菜单只注册六个常用命令。`/think` 展示最近的可见答复摘要。
+Telegram 中保留 `/model`、`/effort`、`/mode`（与“设置”相同）以及运行快捷指令的 `/cmd 名称`。`/provider`、`/system`、`/persona`、`/ws`、`/cron`、`/skills`、`/health`、`/runs`、`/file`、`/admin`、`/friend`、`/ban` 已移至服务器终端，管理员在 Telegram 中发送这些命令会收到终端命令提示。`/think` 展示最近的可见答复摘要。
 
 ## 三种执行模式
 
@@ -191,14 +241,13 @@ when: 修改代码或修复 bug 后
 
 从审核过的文件运行 `sha256sum my-skill.md` 获取摘要；示例地址与摘要是占位值。下载必须使用 HTTPS、匹配精确主机白名单、通过 SHA256 校验，最多 128 KiB；重定向也会检查。安装只保存 Markdown 文本。
 
-```text
-/skills discover 测试
-/skills install my-skill
-/skills sync
-/skills info my-skill
+```bash
+tg-agent admin skills                    # 列出本地技能
+tg-agent admin skills install my-skill
+tg-agent admin skills sync
 ```
 
-管理员手动发送 `install` / `sync` 命令就是本次安装授权；模型发起的 `install_skill` 仍受审批。只有同时配置 `auto_fetch_skills: true`、`auto_load_skills: true` 且当前为管理员的 `auto` 模式，才会按任务自动下载匹配的可信技能。首次启动不需要远程技能源。
+管理员在服务器终端执行 `install` / `sync` 就是本次安装授权；模型发起的 `install_skill` 仍受审批。只有同时配置 `auto_fetch_skills: true`、`auto_load_skills: true` 且当前为管理员的 `auto` 模式，才会按任务自动下载匹配的可信技能。首次启动不需要远程技能源。
 
 SSH 后端只从机器人主机的 `skills_dir` 加载技能；需要使用远端项目技能时，请复制到机器人技能目录或通过可信目录分发。项目 `AGENTS.md` 在执行后端读取。
 
@@ -221,7 +270,7 @@ SSH 后端只从机器人主机的 `skills_dir` 加载技能；需要使用远�
 | `display` | 显示开关的全员默认值，见“显示与统计” |
 | `llm_retries` | 6，模型接口失败后的静默重试次数（0 为默认，-1 关闭，最多 20） |
 | `registration` | `approval`，用户注册方式：`off` / `approval` / `open` |
-| `bot_name` `author` `support_text` `support_url` | 名称、作者、支持说明与链接；也可在管理后台修改 |
+| `bot_name` `author` `support_text` `support_url` | 名称、作者、支持说明与链接；也可在服务器终端修改 |
 | `providers[].efforts` | 可选，该服务商接受的推理档位，如 `["low","medium","high"]`；不填则按模型名自动匹配 |
 
 **推理档位按 API 提供的选项选择**：“推理档位”面板和 `/effort` 只列出当前服务商/模型支持的值。来源依次是 `providers[].efforts`、内置的模型名对照（DeepSeek、GPT-4o、Qwen 等不支持该参数，只显示“off”，DeepSeek 用 deepseek-reasoner 开启思考；GPT-5 为 minimal/low/medium/high，GPT-5.1 为 low/medium/high，GPT-5.2 起含 xhigh，o 系列 low/medium/high，grok-3-mini low/high，Gemini 2.5+ low/medium/high），未识别的模型列出常见档位。请求只携带当前模型支持的值；服务商返回“不支持 reasoning_effort”时会去掉该参数静默重发，并在本次运行内不再发送。
@@ -232,18 +281,17 @@ SSH 后端只从机器人主机的 `skills_dir` 加载技能；需要使用远�
 
 ## 定时任务、快捷指令与 SSH
 
-```text
-/cron add daily 09:00 汇总服务器状态
-/cron add weekdays 18:00 检查未提交改动
-/cron add in 45m 提醒我开会
-/cron pause 1 | resume 1 | run 1 | del 1
-/cmd add review 检查当前项目的未提交改动并给出问题
-/cmd review
-/cron add 30m 检查服务状态并报告异常
-/cron del 1
+在服务器终端管理（结果发到主人的私聊）：
+
+```bash
+tg-agent admin cron add daily 09:00 汇总服务器状态
+tg-agent admin cron add weekdays 18:00 检查未提交改动
+tg-agent admin cron add in 45m 提醒我开会
+tg-agent admin cron pause 1        # resume 1 | run 1 | del 1
+tg-agent admin cmd add review 检查当前项目的未提交改动并给出问题
 ```
 
-定时任务最短间隔 60 秒，使用创建者身份，并在触发前重新检查管理员权限。已有任务仍在运行时，不排队叠加同一私聊的新任务。旧版没有创建者 ID 的定时任务会停用，需要重新创建。
+在 Telegram 里发送 `/cmd review` 运行快捷指令；对 AI 说“每天 9 点提醒我…”，它也会自己创建定时任务。定时任务最短间隔 60 秒，使用创建者身份，并在触发前重新检查管理员权限。已有任务仍在运行时，不排队叠加同一私聊的新任务。旧版没有创建者 ID 的定时任务会停用，需要重新创建。
 
 远程执行配置 `backend: "ssh"`、`ssh.host/user/port/key_path` 和远端绝对 `workspace`。先用服务用户执行一次正常 SSH 登录，核验主机指纹并写入 `known_hosts`；程序开启严格主机密钥校验，不再关闭校验。远端需有 bash、base64、mktemp 与 GNU coreutils；路径检查使用 `realpath`。
 

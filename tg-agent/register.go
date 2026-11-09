@@ -236,9 +236,11 @@ func submitRegistration(chatID int64, u User, note string) {
 		}, nil)
 	case regPending:
 		sendMessage(chatID, tr(lang, "reg.submitted"), nil)
+		// Review happens in the server terminal; the notice shows the command.
 		notifyAdmins(func(adminLang string) string {
-			return "<b>▍" + esc(tr(adminLang, "reg.request_title")) + "</b>\n" + regSummaryHTML(adminLang, req)
-		}, func(adminLang string) interface{} { return regDecisionKeyboard(adminLang, req.ID) })
+			return "<b>▍" + esc(tr(adminLang, "reg.request_title")) + "</b>\n" + regSummaryHTML(adminLang, req) +
+				"\n\n" + esc(tr(adminLang, "reg.review_hint")) + "\n<code>" + esc(adminCommandLine()+" reg approve "+strconv.FormatInt(req.ID, 10)) + "</code>"
+		}, nil)
 	case regAlready:
 		sendMessage(chatID, tr(lang, "reg.waiting"), nil)
 	case regCooling:
@@ -265,11 +267,6 @@ func regSummaryHTML(lang string, r regRequest) string {
 	return b.String()
 }
 
-func regDecisionKeyboard(lang string, id int64) interface{} {
-	sid := strconv.FormatInt(id, 10)
-	return keyboard([][]Btn{{btn("✓ "+tr(lang, "reg.approve"), "reg:ok:"+sid), btn("✗ "+tr(lang, "reg.reject"), "reg:no:"+sid), btn(tr(lang, "users.set_ban"), "reg:ban:"+sid)}})
-}
-
 // notifyAdmins sends a message to the owner and every admin in their language.
 func notifyAdmins(text func(lang string) string, markup func(lang string) interface{}) {
 	c := configSnapshot()
@@ -289,10 +286,10 @@ func notifyAdmins(text func(lang string) string, markup func(lang string) interf
 	}
 }
 
-// decideRegistration approves, rejects or bans an applicant. It returns a
-// toast and whether the request was still open.
-func decideRegistration(adminUID, id int64, decision string) (string, bool) {
-	lang := langFor(adminUID)
+// decideRegistration approves, rejects or bans an applicant (from the server
+// terminal) and tells the applicant in Telegram. It returns a result line and
+// whether the request was still open.
+func decideRegistration(lang string, id int64, decision string) (string, bool) {
 	regMu.Lock()
 	list := loadRegsLocked()
 	idx := -1
@@ -343,82 +340,4 @@ func decideRegistration(adminUID, id int64, decision string) (string, bool) {
 		return tr(lang, "reg.done_no", regDisplay(req)), true
 	}
 	return tr(lang, "reg.done_ban", regDisplay(req)), true
-}
-
-// registrationPanel lists pending applications and the registration mode.
-func registrationPanel(lang string) (string, map[string]interface{}) {
-	mode := registrationMode(configSnapshot())
-	pending := pendingRegistrations()
-	var b strings.Builder
-	b.WriteString("<b>▍" + esc(tr(lang, "btn.registrations")) + "</b>\n")
-	fmt.Fprintf(&b, "%s %s\n", esc(tr(lang, "console.registration")), esc(registrationLabel(lang, mode)))
-	b.WriteString("<i>" + esc(tr(lang, "reg.mode_hint."+mode)) + "</i>\n\n")
-	if len(pending) == 0 {
-		b.WriteString(esc(tr(lang, "reg.none")))
-	}
-	var rows [][]Btn
-	for i, r := range pending {
-		if i >= 8 {
-			fmt.Fprintf(&b, "… +%d\n", len(pending)-i)
-			break
-		}
-		fmt.Fprintf(&b, "%d. <b>%s</b> <code>%d</code> · %s", i+1, esc(regDisplay(r)), r.ID, esc(time.Unix(r.Created, 0).Format("01-02 15:04")))
-		if r.Note != "" {
-			b.WriteString(" · " + esc(short(r.Note, 60)))
-		}
-		b.WriteString("\n")
-		sid := strconv.FormatInt(r.ID, 10)
-		rows = append(rows, []Btn{btn(fmt.Sprintf("✓ %d. %s", i+1, short(regDisplay(r), 14)), "regp:ok:"+sid), btn("✗ "+tr(lang, "reg.reject"), "regp:no:"+sid)})
-	}
-	var modeRow []Btn
-	for _, m := range []string{"off", "approval", "open"} {
-		label := registrationLabel(lang, m)
-		if m == mode {
-			label = "● " + label
-		}
-		modeRow = append(modeRow, btn(label, "regp:mode:"+m))
-	}
-	rows = append(rows, modeRow, []Btn{btn(tr(lang, "btn.refresh"), "adm:reg"), btn(tr(lang, "btn.back"), "adm:root")})
-	return strings.TrimRight(b.String(), "\n"), keyboard(rows)
-}
-
-// handleRegistrationCallback serves admin buttons: "reg:<ok|no|ban>:<id>" on
-// notifications (collapsed to the result afterwards) and "regp:..." on the
-// review list (re-rendered in place), plus "regp:mode:<mode>".
-func handleRegistrationCallback(chatID, msgID, uid int64, data string) string {
-	lang := langFor(uid)
-	parts := strings.Split(data, ":")
-	if len(parts) != 3 {
-		return ""
-	}
-	fromPanel := parts[0] == "regp"
-	refreshPanel := func() {
-		text, kb := registrationPanel(lang)
-		editUI(chatID, msgID, text, kb)
-	}
-	if parts[1] == "mode" {
-		mode := parts[2]
-		if !fromPanel || (mode != "off" && mode != "approval" && mode != "open") {
-			return ""
-		}
-		uiMu.Lock()
-		err := updateConfig(func(c *Config) { c.Registration = mode })
-		uiMu.Unlock()
-		if err != nil {
-			return tr(lang, "err.save", err.Error())
-		}
-		refreshPanel()
-		return tr(lang, "console.registration") + " " + registrationLabel(lang, mode)
-	}
-	id, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil || id <= 0 || (parts[1] != "ok" && parts[1] != "no" && parts[1] != "ban") {
-		return ""
-	}
-	toast, _ := decideRegistration(uid, id, parts[1])
-	if fromPanel {
-		refreshPanel()
-	} else {
-		editUI(chatID, msgID, "<b>"+esc(toast)+"</b>", nil)
-	}
-	return toast
 }

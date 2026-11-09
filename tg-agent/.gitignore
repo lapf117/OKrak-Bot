@@ -20,3 +20,4 @@ coverage.out
 /exports/
 /registrations.json
 /announcements.json
+/admin.sock

@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +29,7 @@ func pressButton(u User, msgID int64, data string) {
 	handleCallback(CallbackQuery{ID: "cb", From: u, Message: &Message{MessageID: msgID, Chat: Chat{ID: u.ID, Type: "private"}}, Data: data})
 }
 
-// sentTo returns the texts of messages sent to one chat.
+// sentTo returns the messages sent to one chat.
 func (r *tgRecorder) sentTo(chatID int64) []recordedCall {
 	var out []recordedCall
 	for _, call := range r.snapshot() {
@@ -49,7 +53,32 @@ func lastTextTo(r *tgRecorder, chatID int64) (string, string) {
 	return text, markupOf(last)
 }
 
-func TestMenusAreConcise(t *testing.T) {
+func lastToast(r *tgRecorder) string {
+	calls := r.snapshot()
+	for i := len(calls) - 1; i >= 0; i-- {
+		if calls[i].Method == "answerCallbackQuery" {
+			text, _ := calls[i].Payload["text"].(string)
+			return text
+		}
+	}
+	return ""
+}
+
+func op(t *testing.T, name string, args ...string) string {
+	t.Helper()
+	text, err := execAdminOp(context.Background(), langZH, name, args)
+	if err != nil {
+		t.Fatalf("%s %v: %v", name, args, err)
+	}
+	return text
+}
+
+func opErr(name string, args ...string) error {
+	_, err := execAdminOp(context.Background(), langZH, name, args)
+	return err
+}
+
+func TestTelegramKeepsOnlyUserMenusAndSettings(t *testing.T) {
 	c := runtimeTestConfig(t)
 	rec := recordTelegram(t)
 	owner, friend := c.OwnerID, c.OwnerID+1
@@ -59,154 +88,112 @@ func TestMenusAreConcise(t *testing.T) {
 	cfg.ProviderName, cfg.Model = "p", "m1"
 	cfgMu.Unlock()
 
-	user := kbString(mainMenu(friend))
+	user, admin := kbString(mainMenu(friend)), kbString(mainMenu(owner))
 	for _, want := range []string{"act:new", "nav:display", "act:help", "act:notice", "act:about"} {
-		if !strings.Contains(user, want) {
-			t.Errorf("user menu lacks %s: %s", want, user)
-		}
-	}
-	admin := kbString(mainMenu(owner))
-	for _, want := range []string{"act:usage", "nav:model", "nav:effort", "nav:settings", "act:notice", "act:about"} {
-		if !strings.Contains(admin, want) {
-			t.Errorf("admin menu lacks %s: %s", want, admin)
+		if !strings.Contains(user, want) || !strings.Contains(admin, want) {
+			t.Errorf("menus lack %s", want)
 		}
 	}
 	for _, menu := range []string{user, admin} {
-		for _, gone := range []string{"nav:skills", "nav:advanced", "act:cron", "act:quick", "nav:persona", "nav:system", "nav:workspace"} {
+		for _, gone := range []string{"adm:", "nav:skills", "nav:advanced", "act:cron", "act:quick", "nav:persona", "nav:system", "nav:workspace", "nav:users", "nav:provider"} {
 			if strings.Contains(menu, gone) {
-				t.Errorf("menu still offers %s: %s", gone, menu)
+				t.Errorf("menu still offers %s", gone)
 			}
 		}
 	}
 	settings := kbString(adminMenu(owner))
-	for _, want := range []string{"nav:model", "nav:execution", "nav:effort", "nav:root"} {
-		if !strings.Contains(settings, want) {
-			t.Errorf("settings lacks %s", want)
-		}
-	}
-	if strings.Count(settings, "callback_data") != 4 {
+	if strings.Count(settings, "callback_data") != 4 || !strings.Contains(settings, "nav:model") || !strings.Contains(settings, "nav:execution") || !strings.Contains(settings, "nav:effort") {
 		t.Fatalf("settings should hold only model, mode, reasoning and back: %s", settings)
 	}
-	if text := settingsText(owner); !strings.Contains(text, "m1") || !strings.Contains(text, "执行模式") || !strings.Contains(text, "推理") {
-		t.Fatalf("settings text: %s", text)
+	if help := helpBody(owner); strings.Contains(help, "/admin") || !strings.Contains(help, " admin") || !strings.Contains(help, "/settings") {
+		t.Fatalf("admin help should point to the terminal: %s", help)
 	}
-	help := helpBody(friend)
-	for _, gone := range []string{"/skills", "/cron", "/steps", "/cmd", "/settings", "/admin"} {
-		if strings.Contains(help, gone) {
-			t.Errorf("user help lists %s", gone)
-		}
-	}
-	if !strings.Contains(help, "/notice") || !strings.Contains(help, "/about") || !strings.Contains(helpBody(owner), "/admin") {
-		t.Fatal("help lacks the new entries")
+	if help := helpBody(friend); strings.Contains(help, "admin") || strings.Contains(help, "/settings") {
+		t.Fatalf("user help mentions admin tools: %s", help)
 	}
 	var names []string
-	for _, cmd := range commandList(false, langZH) {
+	for _, cmd := range commandList(true, langZH) {
 		names = append(names, cmd["command"])
 	}
-	if strings.Join(names, " ") != "menu new stop show notice about help" {
-		t.Fatalf("default command list: %v", names)
-	}
-	if got := len(commandList(true, langZH)); got != len(names)+3 {
-		t.Fatalf("admin command list size %d", got)
+	if strings.Join(names, " ") != "menu new stop show notice about help settings usage" {
+		t.Fatalf("admin command list: %v", names)
 	}
 
-	// The model picker no longer links to providers; skills are admin-only.
+	// Management commands answer with the terminal command for admins only.
+	for _, cmd := range []string{"/admin", "/provider", "/ws", "/cron", "/skills", "/announce", "/health", "/file"} {
+		handleCommand(owner, owner, cmd, cmd)
+		if text, _ := lastTextTo(rec, owner); !strings.Contains(text, "服务器终端") || !strings.Contains(text, " admin") {
+			t.Errorf("%s did not point to the terminal: %s", cmd, text)
+		}
+		handleCommand(friend, friend, cmd, cmd)
+		if text, _ := lastTextTo(rec, friend); !strings.Contains(text, "未知命令") {
+			t.Errorf("%s answered a friend with %q", cmd, text)
+		}
+	}
+	handleCommand(owner, owner, "/cmd add x y", "/cmd add x y")
+	if len(configSnapshot().QuickCommands) != 0 {
+		t.Fatal("shortcuts can still be created from Telegram")
+	}
+	// Buttons from older admin panels only point to the terminal.
+	pressButton(User{ID: owner}, 9, "adm:root")
+	if toast := lastToast(rec); !strings.Contains(toast, "tg-agent admin") {
+		t.Fatalf("legacy button toast: %q", toast)
+	}
+	pressButton(User{ID: owner}, 9, "set:ban:"+"123")
+	if containsID(configSnapshot().Banned, 123) {
+		t.Fatal("legacy user button still changes users")
+	}
+	// The three settings still work from Telegram.
 	pressButton(User{ID: owner}, 9, "nav:model")
 	edit, ok := rec.find("editMessageText", "选择模型")
 	if !ok || strings.Contains(markupOf(edit), "nav:provider") {
-		t.Fatalf("model picker: %v %s", ok, markupOf(edit))
+		t.Fatal("model picker missing or links to providers")
 	}
-	handleCommand(friend, friend, "/skills", "/skills")
-	if text, _ := lastTextTo(rec, friend); !strings.Contains(text, "管理员") {
-		t.Fatalf("friend reached /skills: %q", text)
-	}
-}
-
-func TestConsoleIsAdminOnly(t *testing.T) {
-	c := runtimeTestConfig(t)
-	rec := recordTelegram(t)
-	owner, friend := c.OwnerID, c.OwnerID+1
-	cfgMu.Lock()
-	cfg.Friends = []int64{friend}
-	cfgMu.Unlock()
-	handleCommand(owner, owner, "/admin", "/admin")
-	text, kb := lastTextTo(rec, owner)
-	if !strings.Contains(text, "管理后台") {
-		t.Fatalf("console text: %s", text)
-	}
-	for _, want := range []string{"nav:users", "adm:reg", "adm:notice", "adm:brand", "nav:provider", "nav:system", "nav:persona", "act:cron", "act:quick", "nav:skills", "act:health"} {
-		if !strings.Contains(kb, want) {
-			t.Errorf("console lacks %s", want)
-		}
-	}
-	handleCommand(friend, friend, "/admin", "/admin")
-	if text, _ := lastTextTo(rec, friend); !strings.Contains(text, "管理员") {
-		t.Fatalf("friend opened console: %s", text)
-	}
-	pressButton(User{ID: friend}, 3, "adm:brand")
-	if _, ok := rec.find("editMessageText", "名称与作者"); ok {
-		t.Fatal("friend opened an admin panel")
-	}
-	// /admin add <id> still edits the admin list.
-	handleCommand(owner, owner, "/admin add 4242", "/admin add 4242")
-	if !isAdmin(4242) {
-		t.Fatal("/admin add no longer works")
+	pressButton(User{ID: owner}, 9, settingCallback("model", "m2"))
+	if configSnapshot().Model != "m2" {
+		t.Fatal("model switch failed")
 	}
 }
 
-func TestRegistrationApprovalFlow(t *testing.T) {
+func TestRegistrationIsReviewedInTerminal(t *testing.T) {
 	c := runtimeTestConfig(t)
 	rec := recordTelegram(t)
 	owner := c.OwnerID
 	ann := User{ID: 5005, FirstName: "Ann", Username: "ann"}
 
 	handleMessage(privateMsg(ann, "/start"))
-	text, kb := lastTextTo(rec, ann.ID)
-	if !strings.Contains(text, "云端 AI Agent") || !strings.Contains(kb, "reg:apply") {
+	if text, kb := lastTextTo(rec, ann.ID); !strings.Contains(text, "云端 AI Agent") || !strings.Contains(kb, "reg:apply") {
 		t.Fatalf("welcome: %s %s", text, kb)
 	}
 	pressButton(ann, 2, "reg:apply")
-	if len(pendingRegistrations()) != 1 || allowed(ann.ID) {
-		t.Fatal("application not pending")
-	}
 	notice, noticeKB := lastTextTo(rec, owner)
-	if !strings.Contains(notice, "新的注册申请") || !strings.Contains(notice, "@ann") || !strings.Contains(noticeKB, "reg:ok:5005") {
-		t.Fatalf("admin not notified: %s %s", notice, noticeKB)
+	if !strings.Contains(notice, "新的注册申请") || !strings.Contains(notice, "reg approve 5005") || noticeKB != "null" {
+		t.Fatalf("admin notification should carry the terminal command and no buttons: %s %s", notice, noticeKB)
 	}
 	before := len(rec.sentTo(owner))
 	handleMessage(privateMsg(ann, "/register 再试一次"))
 	if text, _ := lastTextTo(rec, ann.ID); !strings.Contains(text, "等待") || len(rec.sentTo(owner)) != before {
 		t.Fatalf("duplicate application: %q", text)
 	}
-
-	// A friend cannot decide; the owner approves.
-	friend := owner + 1
-	cfgMu.Lock()
-	cfg.Friends = []int64{friend}
-	cfgMu.Unlock()
-	pressButton(User{ID: friend}, 4, "reg:ok:5005")
-	if allowed(ann.ID) {
-		t.Fatal("friend approved a registration")
+	if list := op(t, "reg.list"); !strings.Contains(list, "Ann @ann (5005)") || !strings.Contains(list, "需审核") {
+		t.Fatalf("reg list: %s", list)
 	}
-	pressButton(User{ID: owner}, 4, "reg:ok:5005")
-	if !isFriend(ann.ID) || len(pendingRegistrations()) != 0 {
-		t.Fatal("approval did not grant access")
+	if ids := op(t, "reg.ids"); ids != "5005" {
+		t.Fatalf("reg ids: %q", ids)
+	}
+	if out := op(t, "reg.approve", "5005"); !strings.Contains(out, "已通过") || !isFriend(ann.ID) {
+		t.Fatalf("approve: %s", out)
 	}
 	if text, kb := lastTextTo(rec, ann.ID); !strings.Contains(text, "注册已通过") || !strings.Contains(kb, "act:new") {
 		t.Fatalf("applicant not welcomed: %s", text)
 	}
-	if edit, ok := rec.find("editMessageText", "已通过"); !ok || strings.Contains(markupOf(edit), "reg:ok") {
-		t.Fatal("notification not collapsed after the decision")
-	}
-	pressButton(User{ID: owner}, 4, "reg:ok:5005")
-	if edit, ok := rec.find("editMessageText", "已经处理"); !ok || edit.Payload["text"] == "" {
-		t.Fatal("second decision not reported as handled")
+	if err := opErr("reg.approve", "5005"); err == nil || !strings.Contains(err.Error(), "已经处理") {
+		t.Fatalf("second decision: %v", err)
 	}
 
-	// Rejection with cooldown.
 	bob := User{ID: 6006, FirstName: "Bob"}
 	submitRegistration(bob.ID, bob, "想试试")
-	pressButton(User{ID: owner}, 7, "regp:no:6006")
+	op(t, "reg.reject", "6006")
 	if allowed(bob.ID) {
 		t.Fatal("rejected user has access")
 	}
@@ -218,155 +205,322 @@ func TestRegistrationApprovalFlow(t *testing.T) {
 		t.Fatalf("cooldown not enforced: %s", text)
 	}
 
-	// Open mode grants access at once; off mode keeps the old message.
-	pressButton(User{ID: owner}, 8, "regp:mode:open")
-	if registrationMode(configSnapshot()) != "open" {
-		t.Fatal("mode button failed")
-	}
+	op(t, "reg.mode", "开放")
 	cat := User{ID: 7007, FirstName: "Cat"}
 	handleMessage(privateMsg(cat, "/register"))
 	if !isFriend(cat.ID) {
 		t.Fatal("open registration did not grant access")
 	}
-	if text, _ := lastTextTo(rec, owner); !strings.Contains(text, "新用户已注册") {
-		t.Fatalf("admins not told about the new user: %s", text)
-	}
-	pressButton(User{ID: owner}, 8, "regp:mode:off")
-	dan := User{ID: 8008, FirstName: "Dan"}
-	handleMessage(privateMsg(dan, "/start"))
-	if text, kb := lastTextTo(rec, dan.ID); !strings.Contains(text, "未授权") || strings.Contains(kb, "reg:apply") {
+	op(t, "reg.mode", "off")
+	handleMessage(privateMsg(User{ID: 8008}, "/start"))
+	if text, kb := lastTextTo(rec, 8008); !strings.Contains(text, "未授权") || strings.Contains(kb, "reg:apply") {
 		t.Fatalf("off mode: %s %s", text, kb)
 	}
-	cfgMu.Lock()
-	cfg.Registration, cfg.Banned = "approval", []int64{9009}
-	cfgMu.Unlock()
+	if err := opErr("reg.mode", "maybe"); err == nil {
+		t.Fatal("bad mode accepted")
+	}
+	op(t, "reg.mode", "approval")
+	op(t, "users.add", "ban", "9009")
 	handleMessage(privateMsg(User{ID: 9009}, "/register"))
 	if text, _ := lastTextTo(rec, 9009); !strings.Contains(text, "封禁") {
 		t.Fatalf("banned user could apply: %s", text)
 	}
 }
 
-func waitFor(t *testing.T, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatal("timed out")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-}
-
-func TestAnnouncementPreviewPublishAndView(t *testing.T) {
-	c := runtimeTestConfig(t)
-	rec := recordTelegram(t)
-	owner, f1, f2, banned := c.OwnerID, c.OwnerID+1, c.OwnerID+2, c.OwnerID+3
-	cfgMu.Lock()
-	cfg.Friends, cfg.Banned = []int64{f1, f2, banned}, []int64{banned}
-	cfgMu.Unlock()
-
-	pressButton(User{ID: owner}, 3, "adm:in:announce")
-	handleMessage(privateMsg(User{ID: owner}, "## 维护通知\n今晚 **22:00** 升级"))
-	preview, kb := lastTextTo(rec, owner)
-	if !strings.Contains(preview, "预览") || !strings.Contains(preview, "<b>22:00</b>") || !strings.Contains(kb, "ntc:pub") {
-		t.Fatalf("preview: %s %s", preview, kb)
-	}
-	if len(rec.sentTo(f1)) != 0 {
-		t.Fatal("announcement pushed before confirmation")
-	}
-	pressButton(User{ID: f1}, 4, "ntc:pub")
-	if len(listNotices()) != 0 {
-		t.Fatal("friend published an announcement")
-	}
-	pressButton(User{ID: owner}, 4, "ntc:pub")
-	waitFor(t, func() bool { n := listNotices(); return len(n) == 1 && n[0].Total > 0 })
-	n := listNotices()[0]
-	if n.Sent != 3 || n.Total != 3 {
-		t.Fatalf("delivery %d/%d, want owner and two friends", n.Sent, n.Total)
-	}
-	for _, id := range []int64{owner, f1, f2} {
-		if text, _ := lastTextTo(rec, id); !strings.Contains(text, "维护通知") || !strings.Contains(text, "▍公告") {
-			t.Errorf("user %d did not get the announcement: %s", id, text)
-		}
-	}
-	if len(rec.sentTo(banned)) != 0 {
-		t.Fatal("banned user received the announcement")
-	}
-	waitFor(t, func() bool { _, ok := rec.find("editMessageText", "送达 3/3"); return ok })
-
-	pressButton(User{ID: f1}, 5, "act:notice")
-	if edit, ok := rec.find("editMessageText", "维护通知"); !ok || !strings.Contains(markupOf(edit), "nav:root") {
-		t.Fatal("users cannot read announcements")
-	}
-	handleCommand(f1, f1, "/announce 偷偷发", "/announce")
-	if text, _ := lastTextTo(rec, f1); !strings.Contains(text, "管理员") {
-		t.Fatalf("friend could announce: %s", text)
-	}
-
-	// Cancelling a draft publishes nothing; deleting removes it.
-	handleCommand(owner, owner, "/announce 草稿", "/announce")
-	pressButton(User{ID: owner}, 6, "ntc:cancel")
-	pressButton(User{ID: owner}, 6, "ntc:pub")
-	if len(listNotices()) != 1 {
-		t.Fatal("cancelled draft was published")
-	}
-	pressButton(User{ID: owner}, 7, "ntc:del:1")
-	if len(listNotices()) != 0 {
-		t.Fatal("delete failed")
-	}
-}
-
-func TestBrandInputAndAboutPanel(t *testing.T) {
+func TestTerminalOperations(t *testing.T) {
 	c := runtimeTestConfig(t)
 	rec := recordTelegram(t)
 	owner := c.OwnerID
-	me := User{ID: owner}
+	cronMu.Lock()
+	cronJobs, cronSeq = nil, 0
+	cronMu.Unlock()
 
-	text, kbMap := aboutPanel(owner)
-	if kb := kbString(kbMap); !strings.Contains(text, "感谢使用") || !strings.Contains(text, "/admin") || strings.Contains(kb, `"url"`) {
-		t.Fatalf("default about page: %s %s", text, kb)
+	// users
+	op(t, "users.add", "friend", "2002")
+	op(t, "users.add", "管理员", "3003")
+	if !isFriend(2002) || !isAdmin(3003) {
+		t.Fatal("users.add failed")
 	}
-	pressButton(me, 3, "adm:in:name")
-	handleMessage(privateMsg(me, "AI Agent 云端"))
-	if configSnapshot().BotName != "AI Agent 云端" || !strings.Contains(menuText(owner), "AI Agent 云端") || !strings.Contains(helpBody(owner), "AI Agent 云端") {
-		t.Fatal("name not applied")
+	if list := op(t, "users.list"); !strings.Contains(list, "2002") || !strings.Contains(list, "3003") {
+		t.Fatalf("users list: %s", list)
 	}
-	pressButton(me, 3, "adm:in:author")
-	handleMessage(privateMsg(me, "大肥鱼"))
-	pressButton(me, 3, "adm:in:support")
-	handleMessage(privateMsg(me, "觉得好用可以请作者喝杯咖啡。"))
-	pressButton(me, 3, "adm:in:link")
-	handleMessage(privateMsg(me, "ftp://example.com"))
-	if configSnapshot().SupportURL != "" {
-		t.Fatal("invalid link saved")
+	if _, ok := rec.find("setMyCommands", ""); !ok {
+		t.Fatal("new admin did not get the admin command menu")
 	}
-	if text, _ := lastTextTo(rec, owner); !strings.Contains(text, "support_url") {
-		t.Fatalf("invalid link not explained: %s", text)
-	}
-	pressButton(me, 3, "adm:in:link")
-	handleMessage(privateMsg(me, "https://example.com/sponsor"))
-	text, kbMap = aboutPanel(owner + 1)
-	if kb := kbString(kbMap); !strings.Contains(text, "作者 大肥鱼") || !strings.Contains(text, "请作者喝杯咖啡") || !strings.Contains(kb, "https://example.com/sponsor") {
-		t.Fatalf("about page: %s %s", text, kbString(kbMap))
+	op(t, "users.del", "admin", "3003")
+	if isAdmin(3003) || opErr("users.add", "friend", "abc") == nil || opErr("users.add", "admin", "1001") == nil {
+		t.Fatal("users validation")
 	}
 
-	// "-" restores the default; a command cancels a pending input.
-	pressButton(me, 3, "adm:in:name")
-	handleMessage(privateMsg(me, "-"))
-	if configSnapshot().BotName != "" || !strings.Contains(menuText(owner), tr(langZH, "app.name")) {
-		t.Fatal("name not cleared")
+	// name, author, support
+	op(t, "brand.set", "name", "AI Agent 云端")
+	op(t, "brand.set", "作者", "大肥鱼")
+	op(t, "brand.set", "text", "觉得好用可以请作者喝杯咖啡。")
+	if err := opErr("brand.set", "link", "ftp://example.com"); err == nil {
+		t.Fatal("invalid link accepted")
 	}
-	pressButton(me, 3, "adm:in:name")
-	handleMessage(privateMsg(me, "/help"))
-	if _, pending := pendingAdminInput(owner); pending || configSnapshot().BotName != "" {
-		t.Fatal("command did not cancel the input")
+	op(t, "brand.set", "link", "https://example.com/sponsor")
+	text, kb := aboutPanel(2002)
+	if !strings.Contains(text, "AI Agent 云端") || !strings.Contains(text, "作者 大肥鱼") || !strings.Contains(kbString(kb), "https://example.com/sponsor") || !strings.Contains(menuText(owner), "AI Agent 云端") {
+		t.Fatalf("brand not applied: %s", text)
 	}
-	pressButton(me, 3, "adm:in:author")
-	handleCommand(owner, owner, "/cancel", "/cancel")
-	if _, pending := pendingAdminInput(owner); pending {
-		t.Fatal("/cancel failed")
+	op(t, "brand.set", "name", "-")
+	if configSnapshot().BotName != "" {
+		t.Fatal("- did not clear the name")
 	}
-	if bad := configSnapshot(); validateConfig(func() Config { bad.Registration = "maybe"; return bad }()) == nil {
-		t.Fatal("invalid registration mode accepted")
+
+	// providers
+	op(t, "provider.add", "ds", "https://api.deepseek.com", "env:DS_KEY", "deepseek-chat,deepseek-reasoner")
+	op(t, "provider.use", "ds")
+	if cs := configSnapshot(); cs.ProviderName != "ds" || cs.Model != "deepseek-chat" {
+		t.Fatalf("provider.use: %s %s", cs.ProviderName, cs.Model)
+	}
+	if raw, _ := os.ReadFile(configPath()); !strings.Contains(string(raw), "env:DS_KEY") {
+		t.Fatal("secret reference not kept in the saved config")
+	}
+	if opErr("provider.del", "ds") == nil {
+		t.Fatal("deleted the active provider")
+	}
+
+	// workspace
+	dir := t.TempDir()
+	op(t, "workspace.add", dir)
+	op(t, "workspace.use", "1")
+	if configSnapshot().Workspace != dir {
+		t.Fatal("workspace.use by number failed")
+	}
+	if opErr("workspace.use", filepath.Join(dir, "missing")) == nil || opErr("workspace.add", "relative") == nil {
+		t.Fatal("workspace validation")
+	}
+	op(t, "workspace.del", "1")
+
+	// prompts
+	op(t, "prompt.set", "system", "只用中文回答。\n保持简洁。")
+	op(t, "prompt.set", "人设", "专业、友好")
+	if cs := configSnapshot(); cs.SystemPrompt != "只用中文回答。\n保持简洁。" || cs.Persona != "专业、友好" {
+		t.Fatal("prompt.set failed")
+	}
+	if shown := op(t, "prompt.show", "system"); !strings.Contains(shown, "保持简洁") {
+		t.Fatalf("prompt.show: %s", shown)
+	}
+	op(t, "prompt.set", "persona", "-")
+	if configSnapshot().Persona != "" {
+		t.Fatal("persona not cleared")
+	}
+
+	// shortcuts and schedules
+	op(t, "cmd.add", "review", "检查未提交的改动")
+	if _, ok := findQuick("review"); !ok {
+		t.Fatal("cmd.add failed")
+	}
+	op(t, "cmd.del", "review")
+	created := op(t, "cron.add", "daily", "09:00", "汇总服务器状态")
+	if !strings.Contains(created, "#1") || len(cronSnapshot()) != 1 || cronSnapshot()[0].UserID != owner {
+		t.Fatalf("cron.add: %s", created)
+	}
+	op(t, "cron.pause", "1")
+	if list := op(t, "cron.list"); !strings.Contains(list, "暂停") || !strings.Contains(list, "汇总服务器状态") {
+		t.Fatalf("cron list: %s", list)
+	}
+	op(t, "cron.resume", "1")
+	op(t, "cron.del", "1")
+	if len(cronSnapshot()) != 0 || opErr("cron.add", "sometimes", "x") == nil {
+		t.Fatal("cron handling")
+	}
+
+	// announcements are pushed to every user, not to banned ones
+	cfgMu.Lock()
+	cfg.Banned = []int64{2002}
+	cfgMu.Unlock()
+	if n := op(t, "notice.recipients"); n != "1" {
+		t.Fatalf("recipients: %s", n)
+	}
+	cfgMu.Lock()
+	cfg.Banned = nil
+	cfgMu.Unlock()
+	out := op(t, "notice.publish", "## 维护通知\n今晚 **22:00** 升级")
+	if !strings.Contains(out, "送达 2/2") {
+		t.Fatalf("publish: %s", out)
+	}
+	for _, id := range []int64{owner, 2002} {
+		if text, _ := lastTextTo(rec, id); !strings.Contains(text, "维护通知") || !strings.Contains(text, "<b>22:00</b>") {
+			t.Errorf("user %d did not get the announcement: %s", id, text)
+		}
+	}
+	pressButton(User{ID: 2002}, 5, "act:notice")
+	if _, ok := rec.find("editMessageText", "维护通知"); !ok {
+		t.Fatal("users cannot read announcements")
+	}
+	if list := op(t, "notice.list"); !strings.Contains(list, "#1") || !strings.Contains(list, "送达 2/2") {
+		t.Fatalf("notice list: %s", list)
+	}
+	op(t, "notice.del", "1")
+	if len(listNotices()) != 0 || opErr("notice.del", "9") == nil {
+		t.Fatal("notice.del")
+	}
+
+	// diagnostics and overview
+	if s := op(t, "status"); !strings.Contains(s, "用户 2 人") || !strings.Contains(s, "注册方式") {
+		t.Fatalf("status: %s", s)
+	}
+	if s := op(t, "config"); !strings.Contains(s, "workspace") || strings.Contains(s, "<pre>") {
+		t.Fatalf("config: %s", s)
+	}
+	os.MkdirAll(filepath.Join(baseDir, "runs"), 0700)
+	os.WriteFile(filepath.Join(baseDir, "runs", "20261109-101010.000000000-1001.md"), []byte("# 执行记录\n\n## 任务\n\n检查服务"), 0600)
+	if s := op(t, "runs.list"); !strings.Contains(s, "1.") {
+		t.Fatalf("runs: %s", s)
+	}
+	if s := op(t, "runs.show", "1"); !strings.Contains(s, "检查服务") {
+		t.Fatalf("runs.show: %s", s)
+	}
+	if _, err := callAdmin(context.Background(), langZH, "cron.run", []string{"1"}); err == nil || !strings.Contains(err.Error(), "机器人正在运行") {
+		t.Fatalf("cron.run without a bot: %v", err)
+	}
+}
+
+func TestTerminalTalksToRunningBot(t *testing.T) {
+	runtimeTestConfig(t)
+	recordTelegram(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if botRunning() {
+		t.Fatal("no bot should be running yet")
+	}
+	stop := startAdminSocket(ctx)
+	if !botRunning() {
+		t.Fatal("socket not reachable")
+	}
+	if info, err := os.Stat(adminSocketPath()); err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("socket permissions: %v %v", info, err)
+	}
+	if out, err := callAdmin(ctx, langZH, "brand.set", []string{"name", "云端助手"}); err != nil || !strings.Contains(out, "已保存") {
+		t.Fatalf("socket call: %q %v", out, err)
+	}
+	if configSnapshot().BotName != "云端助手" {
+		t.Fatal("operation did not run in the bot")
+	}
+	if _, err := callAdmin(ctx, langZH, "users.add", []string{"friend", "x"}); err == nil {
+		t.Fatal("errors are not passed back")
+	}
+	// A second instance does not steal the socket.
+	stop2 := startAdminSocket(ctx)
+	stop2()
+	if !botRunning() {
+		t.Fatal("second instance removed the live socket")
+	}
+	stop()
+	if botRunning() {
+		t.Fatal("socket left behind")
+	}
+	// Without the bot the terminal edits the files itself.
+	if _, err := callAdmin(ctx, langZH, "brand.set", []string{"name", "-"}); err != nil || configSnapshot().BotName != "" {
+		t.Fatalf("local fallback: %v", err)
+	}
+}
+
+func TestTerminalPicksUpOutsideConfigChanges(t *testing.T) {
+	runtimeTestConfig(t)
+	recordTelegram(t)
+	op(t, "brand.set", "author", "甲")
+	// Someone edits config.json by hand (or another process saves it).
+	raw, _ := os.ReadFile(configPath())
+	edited := strings.Replace(string(raw), `"author": "甲"`, `"author": "乙"`, 1)
+	time.Sleep(10 * time.Millisecond)
+	if err := os.WriteFile(configPath(), []byte(edited+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	op(t, "brand.set", "name", "新名称")
+	if c := configSnapshot(); c.Author != "乙" || c.BotName != "新名称" {
+		t.Fatalf("outside edit lost: author=%q name=%q", c.Author, c.BotName)
+	}
+	// A broken file is never overwritten.
+	os.WriteFile(configPath(), []byte("{broken"), 0600)
+	if err := opErr("brand.set", "name", "x"); err == nil {
+		t.Fatal("saved over a broken config file")
+	}
+	if raw, _ := os.ReadFile(configPath()); string(raw) != "{broken" {
+		t.Fatal("broken file was replaced")
+	}
+}
+
+// TestTerminalMenuWalkthrough drives the interactive menu with typed input.
+func TestTerminalMenuWalkthrough(t *testing.T) {
+	c := runtimeTestConfig(t)
+	rec := recordTelegram(t)
+	cronMu.Lock()
+	cronJobs, cronSeq = nil, 0
+	cronMu.Unlock()
+	script := strings.Join([]string{
+		"4", "1", "AI Agent 云端", "0", // name
+		"1", "3", "777", "0", // add a user
+		"3", "1", "## 维护通知", "今晚升级", ".", "y", "0", // publish
+		"2", "4", "3", "0", // registration open
+		"9", "1", "daily 09:00", "检查服务", "0", // schedule
+		"7", "1", "只用中文回答。", ".", "0", // system prompt
+		"10", "1", "review", "检查改动", "0", // shortcut
+		"5", "0", "6", "0", "8", "0", "11", "0", "13", "", "14", "15", "", "99", "abc",
+		"0",
+	}, "\n") + "\n"
+	var out bytes.Buffer
+	call := func(name string, args ...string) (string, error) {
+		return callAdmin(context.Background(), langZH, name, args)
+	}
+	newAdminUI(strings.NewReader(script), &out, langZH, call, func() bool { return false }).run()
+	shown := out.String()
+	cs := configSnapshot()
+	if cs.BotName != "AI Agent 云端" || !isFriend(777) || registrationMode(cs) != "open" || cs.SystemPrompt != "只用中文回答。" {
+		t.Fatalf("menu actions not applied: %+v", cs)
+	}
+	if _, ok := findQuick("review"); !ok || len(cronSnapshot()) != 1 || len(listNotices()) != 1 {
+		t.Fatal("shortcut, schedule or announcement missing")
+	}
+	if text, _ := lastTextTo(rec, c.OwnerID); !strings.Contains(text, "维护通知") {
+		t.Fatal("announcement not pushed")
+	}
+	for _, want := range []string{"终端管理", "机器人未运行", "用户管理", "注册审核", "发布公告", "名称与作者", "预览", "送达", "请输入列表中的编号", "已退出"} {
+		if !strings.Contains(shown, want) {
+			t.Errorf("menu output lacks %q", want)
+		}
+	}
+	for _, raw := range []string{"cli.", "btn.", "brand.edit", "reg.mode"} {
+		if strings.Contains(shown, raw) {
+			t.Errorf("untranslated key %q in menu output", raw)
+		}
+	}
+	for _, r := range shown {
+		if r >= 0x1F000 && r <= 0x1FFFF {
+			t.Fatalf("emoji in terminal output: %q", string(r))
+		}
+	}
+}
+
+func TestRunAdminCLICommands(t *testing.T) {
+	runtimeTestConfig(t)
+	rec := recordTelegram(t)
+	var stdout, stderr bytes.Buffer
+	if code := runAdminCLI([]string{"help"}, strings.NewReader(""), &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "admin reg") {
+		t.Fatalf("help: %d %s", code, stdout.String())
+	}
+	stdout.Reset()
+	if code := runAdminCLI([]string{"brand", "set", "author", "大肥鱼"}, strings.NewReader(""), &stdout, &stderr); code != 0 || configSnapshot().Author != "大肥鱼" {
+		t.Fatalf("brand set: %d %s %s", code, stdout.String(), stderr.String())
+	}
+	if code := runAdminCLI([]string{"bogus"}, strings.NewReader(""), &stdout, &stderr); code != 2 {
+		t.Fatalf("unknown command exit %d", code)
+	}
+	stderr.Reset()
+	if code := runAdminCLI([]string{"users", "add", "friend"}, strings.NewReader(""), &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "用法") {
+		t.Fatalf("usage error: %d %s", code, stderr.String())
+	}
+	stdout.Reset()
+	if code := runAdminCLI([]string{"notice", "publish", "-"}, strings.NewReader("来自标准输入的公告\n"), &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "已发布") {
+		t.Fatalf("publish from stdin: %d %s %s", code, stdout.String(), stderr.String())
+	}
+	if _, ok := rec.find("sendMessage", "来自标准输入的公告"); !ok {
+		t.Fatal("announcement not sent")
+	}
+	if telegramContext.Err() != nil || !logToStdout.Load() {
+		t.Fatal("runAdminCLI did not restore the process state")
 	}
 }

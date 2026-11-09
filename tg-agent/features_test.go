@@ -446,6 +446,9 @@ func TestLanguagePreferenceOrder(t *testing.T) {
 }
 
 var trCallRe = regexp.MustCompile(`tr\([^,()]+(?:\([^)]*\))?,\s*"([a-z_.\-]+)"`)
+
+// uiCallRe finds keys used through the terminal menu helper u.t("key").
+var uiCallRe = regexp.MustCompile(`\bu\.t\("([a-z_.\-]+)"`)
 var verbRe = regexp.MustCompile(`%[-+# 0]*\d*(?:\.\d+)?[a-zA-Z]`)
 
 func TestTranslationsCompleteAndConsistent(t *testing.T) {
@@ -455,7 +458,7 @@ func TestTranslationsCompleteAndConsistent(t *testing.T) {
 			continue
 		}
 		src, _ := os.ReadFile(f)
-		for _, m := range trCallRe.FindAllStringSubmatch(string(src), -1) {
+		for _, m := range append(trCallRe.FindAllStringSubmatch(string(src), -1), uiCallRe.FindAllStringSubmatch(string(src), -1)...) {
 			if strings.HasSuffix(m[1], ".") || strings.HasSuffix(m[1], "_") {
 				continue // dynamic key prefix such as "mode."+mode
 			}
@@ -466,7 +469,7 @@ func TestTranslationsCompleteAndConsistent(t *testing.T) {
 	}
 	dynamic := []string{"role.owner", "role.admin", "role.friend", "role.guest", "mode.manual", "mode.auto", "mode.read-only", "steps.on", "steps.off",
 		"persona.title", "persona.usage", "persona.updated", "system.title", "system.usage", "system.updated", "list.admin", "list.friend", "list.ban",
-		"users.set_admin", "users.unset_admin", "users.set_friend", "users.unset_friend", "users.set_ban", "users.unset_ban"}
+		"reg.mode.off", "reg.mode.approval", "reg.mode.open", "reg.mode_hint.off", "reg.mode_hint.approval", "reg.mode_hint.open"}
 	for _, k := range dynamic {
 		if _, ok := messages[k]; !ok {
 			t.Errorf("missing dynamic translation %q", k)

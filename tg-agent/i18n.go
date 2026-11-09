@@ -46,12 +46,8 @@ var messages = map[string][2]string{
 
 	// buttons
 	"btn.new":          {"新对话", "New chat"},
-	"btn.stop":         {"停止", "Stop"},
 	"btn.skills":       {"技能", "Skills"},
-	"btn.memory":       {"记忆", "Memory"},
-	"btn.lang":         {"English", "中文"},
 	"btn.help":         {"帮助", "Help"},
-	"btn.runs":         {"记录", "Runs"},
 	"btn.cron":         {"定时任务", "Schedules"},
 	"btn.settings":     {"设置", "Settings"},
 	"btn.model":        {"模型", "Model"},
@@ -90,7 +86,6 @@ var messages = map[string][2]string{
 	"usage.balance_ok":  {"可用", "available"},
 	"usage.balance_low": {"余额不足", "low"},
 	"menu.mode":         {"模式", "Mode"},
-	"menu.role":         {"身份", "Role"},
 	"menu.turns":        {"%d 轮对话", "%d turns"},
 	"menu.hint":         {"直接发送任务、图片或文件即可开始。", "Just send a task, image or file to start."},
 	"help.intro":        {"直接描述任务，我会制定计划、调用工具执行并验证结果。支持图片、文件、语音和视频。", "Describe a task and I will plan it, use tools to carry it out and verify the result. Images, files, voice and video are supported."},
@@ -105,11 +100,6 @@ var messages = map[string][2]string{
 	"help.lang":         {"切换界面语言", "switch language"},
 	"help.show":         {"显示设置：统计、思考、步骤可单独开关", "display: toggle stats, thinking and steps"},
 	"help.settings":     {"模型、执行模式、推理", "model, execution mode, reasoning"},
-	"help.mode":         {"人工确认 / 自动 / 只读", "manual / auto / read-only"},
-	"help.cron":         {"定时任务：/cron add daily 09:00 检查服务", "schedules: /cron add daily 09:00 check services"},
-	"help.runs":         {"执行记录", "run logs"},
-	"help.file":         {"取回工作区文件", "fetch a workspace file"},
-	"help.health":       {"自检", "health check"},
 	"help.tip":          {"提示：说“每天 9 点提醒我…”或“记住我喜欢…”，Agent 会自己创建定时任务或保存备忘。", "Tip: say \"remind me every day at 9…\" or \"remember that I prefer…\" and the agent schedules it or saves a note itself."},
 	"settings.title":    {"设置", "Settings"},
 	"settings.hint":     {"选择需要调整的项目。修改从下一个任务开始生效。", "Pick what to change. Changes apply from the next task."},
@@ -264,7 +254,6 @@ var messages = map[string][2]string{
 	"memory.cleared":   {"记忆已清空。", "Memory cleared."},
 
 	// schedules
-	"cron.title":    {"定时任务", "Scheduled tasks"},
 	"cron.empty":    {"（没有定时任务）", "(no scheduled tasks)"},
 	"cron.every":    {"每 %s", "every %s"},
 	"cron.daily":    {"每天 %s", "daily %s"},
@@ -290,15 +279,11 @@ var messages = map[string][2]string{
 	// quick commands
 	"quick.title":   {"快捷指令", "Shortcuts"},
 	"quick.empty":   {"（还没有快捷指令）", "(no shortcuts yet)"},
-	"quick.help":    {"添加：/cmd add <名字> <提示词> · 使用：/cmd <名字> [补充说明] · 删除：/cmd del <名字>", "Add: /cmd add <name> <prompt> · Run: /cmd <name> [extra] · Delete: /cmd del <name>"},
-	"quick.usage":   {"用法：/cmd add <名字> <提示词> | /cmd del <名字>", "Usage: /cmd add <name> <prompt> | /cmd del <name>"},
 	"quick.added":   {"已添加快捷指令 %s，发送 /cmd %s 触发。", "Added shortcut %s; send /cmd %s to run it."},
 	"quick.deleted": {"已删除 %s", "Deleted %s"},
 	"quick.unknown": {"没有这个快捷指令。", "No such shortcut."},
 
 	// files, runs, export
-	"file.usage":       {"用法：%s <路径>（相对路径按工作区解析）", "Usage: %s <path> (relative to the workspace)"},
-	"file.error":       {"取不到文件：%s", "Cannot fetch the file: %s"},
 	"file.send_failed": {"发送失败。", "Sending failed."},
 	"runs.title":       {"最近 %d 次执行", "Last %d runs"},
 	"runs.empty":       {"还没有执行记录。", "No runs yet."},
@@ -308,7 +293,6 @@ var messages = map[string][2]string{
 	"export.user":      {"用户", "User"},
 	"export.assistant": {"助手", "Assistant"},
 	"export.caption":   {"对话导出", "Conversation export"},
-	"log.title":        {"运行日志", "Logs"},
 
 	// health & config
 	"health.title":   {"自检", "Health check"},
@@ -338,14 +322,11 @@ var messages = map[string][2]string{
 	"model.unknown":        {"没有这个模型。可用：%s", "Unknown model. Available: %s"},
 	"model.pick":           {"选择模型", "Choose a model"},
 	"provider.none":        {"没有配置服务商。", "No provider configured."},
-	"provider.title":       {"已配置的服务商：", "Configured providers:"},
-	"provider.usage":       {"切换：/provider <名字>\n添加：/provider add <名字> <base_url> <api_key> <模型1,模型2>\n删除：/provider del <名字>", "Switch: /provider <name>\nAdd: /provider add <name> <base_url> <api_key> <model1,model2>\nDelete: /provider del <name>"},
 	"provider.added":       {"已添加服务商 %s（%d 个模型）。用 /provider %s 切换。", "Added provider %s (%d models). Switch with /provider %s."},
 	"provider.deleted":     {"已删除 %s", "Deleted %s"},
 	"provider.del_current": {"不能删除正在使用的服务商，请先切换。", "Cannot delete the active provider; switch first."},
 	"provider.switched":    {"已切换到 %s，模型 %s", "Switched to %s, model %s"},
 	"provider.unknown":     {"没有这个服务商。", "No such provider."},
-	"provider.pick":        {"选择服务商", "Choose a provider"},
 	"effort.title":         {"推理档位", "Reasoning effort"},
 	"effort.default":       {"默认（不发送）", "default (omitted)"},
 	"effort.usage":         {"用法：/effort %s", "Usage: /effort %s"},
@@ -368,43 +349,22 @@ var messages = map[string][2]string{
 	"system.updated":  {"系统提示词已更新，下一个任务生效。", "System prompt updated; applies from the next task."},
 
 	// users
-	"list.admin":         {"管理员", "Admins"},
-	"list.friend":        {"朋友", "Friends"},
-	"list.ban":           {"封禁", "Banned"},
-	"list.empty":         {"%s名单为空。", "%s: empty."},
-	"list.usage":         {"用法：/%s add|rem <用户ID>", "Usage: /%s add|rem <user id>"},
-	"list.bad_id":        {"请填写有效用户 ID；主人身份不可更改。", "Enter a valid user ID; the owner cannot be changed."},
-	"list.exists":        {"已经在名单里。", "Already listed."},
-	"list.updated":       {"%s：%d 已更新。", "%s: %d updated."},
-	"users.title":        {"用户管理", "Users"},
-	"users.summary":      {"管理员 %d · 朋友 %d · 封禁 %d\n点击用户进行操作。", "Admins %d · friends %d · banned %d\nTap a user to manage."},
-	"users.all":          {"所有来访用户", "All visitors"},
-	"users.bans":         {"封禁名单", "Ban list"},
-	"users.bans_hint":    {"点击解除封禁。", "Tap to unban."},
-	"users.bans_empty":   {"封禁名单为空。用 /ban add <ID> 添加。", "No bans. Use /ban add <id>."},
-	"users.visitors":     {"所有来访用户（%d 人）", "All visitors (%d)"},
-	"users.name":         {"名字", "Name"},
-	"users.last":         {"最后活跃", "last seen"},
-	"users.owner_fixed":  {"主人身份固定，不能更改。", "The owner cannot be changed."},
-	"users.set_admin":    {"设为管理员", "Make admin"},
-	"users.unset_admin":  {"取消管理员", "Remove admin"},
-	"users.set_friend":   {"加为朋友", "Add friend"},
-	"users.unset_friend": {"移出朋友", "Remove friend"},
-	"users.set_ban":      {"封禁", "Ban"},
-	"users.unset_ban":    {"解除封禁", "Unban"},
+	"list.admin":   {"管理员", "Admins"},
+	"list.friend":  {"朋友", "Friends"},
+	"list.ban":     {"封禁", "Banned"},
+	"list.bad_id":  {"请填写有效用户 ID；主人身份不可更改。", "Enter a valid user ID; the owner cannot be changed."},
+	"list.updated": {"%s：%d 已更新。", "%s: %d updated."},
+	"users.name":   {"名字", "Name"},
 
 	// workspace
-	"ws.title":     {"工作区", "Workspace"},
 	"ws.current":   {"当前：", "Current:"},
 	"ws.empty":     {"常用列表为空", "No saved workspaces"},
-	"ws.usage":     {"切换：/ws <绝对路径或编号> · 收藏：/ws add <绝对路径> · 移除：/ws del <编号>", "Switch: /ws <absolute path or number> · Save: /ws add <absolute path> · Remove: /ws del <number>"},
 	"ws.exists":    {"已经在列表里。", "Already saved."},
 	"ws.added":     {"已收藏：%s", "Saved: %s"},
 	"ws.bad_index": {"编号不对。", "Invalid number."},
 	"ws.removed":   {"已移除：%s", "Removed: %s"},
 	"ws.absolute":  {"请使用绝对路径。", "Use an absolute path."},
 	"ws.missing":   {"目录不存在：%s", "Directory not found: %s"},
-	"ws.switched":  {"工作区已切换：%s\n对话已重置。", "Workspace switched to %s\nThe conversation was reset."},
 
 	// main menu additions
 	"btn.notice":        {"公告", "Notices"},
@@ -417,41 +377,21 @@ var messages = map[string][2]string{
 	"about.title":      {"支持作者", "Support the author"},
 	"about.author":     {"作者 %s", "by %s"},
 	"about.thanks":     {"感谢使用！如果它帮到了你，欢迎支持作者继续开发。", "Thanks for using it! If it helps you, consider supporting the author."},
-	"about.admin_hint": {"管理员可在 /admin → 名称与作者 中设置作者、支持说明和链接。", "Admins: set the author, support text and link in /admin → Name & author."},
+	"about.admin_hint": {"管理员可在服务器终端的“名称与作者”中设置作者、支持说明和链接：", "Admins can set the author, support text and link under Name & author in the server terminal:"},
 	"about.open":       {"前往支持", "Support"},
 
 	// typed input after a console button
-	"input.cancelled":       {"已取消。", "Cancelled."},
-	"input.none":            {"没有需要取消的操作。", "Nothing to cancel."},
-	"input.waiting":         {"请直接发送内容", "Send the text now"},
-	"input.cancel_hint":     {"5 分钟内有效，发送 /cancel 取消。", "Valid for 5 minutes; send /cancel to cancel."},
-	"input.title.announce":  {"发布公告", "New announcement"},
-	"input.prompt.announce": {"请直接发送公告内容（支持 Markdown）。发送后先预览，确认后才推送给全部用户。", "Send the announcement text (Markdown supported). You will see a preview; it is pushed to all users only after you confirm."},
-	"input.title.name":      {"修改名称", "Edit name"},
-	"input.prompt.name":     {"请发送新的名称（最多 64 字），发送 - 恢复默认名称。", "Send the new name (up to 64 characters), or - to restore the default."},
-	"input.title.author":    {"修改作者", "Edit author"},
-	"input.prompt.author":   {"请发送作者名称，发送 - 清空。", "Send the author name, or - to clear it."},
-	"input.title.support":   {"修改支持说明", "Edit support text"},
-	"input.prompt.support":  {"请发送支持说明（支持 Markdown，例如赞助方式、联系方式），发送 - 清空。", "Send the support text (Markdown, e.g. how to sponsor or contact you), or - to clear it."},
-	"input.title.link":      {"修改支持链接", "Edit support link"},
-	"input.prompt.link":     {"请发送以 https:// 或 tg:// 开头的链接，发送 - 清空。", "Send a link starting with https:// or tg://, or - to clear it."},
 
 	// admin console
-	"console.title":        {"管理后台", "Admin console"},
-	"console.summary":      {"用户 %d 人 · 待审核 %d · 公告 %d 条", "%d users · %d pending · %d announcements"},
-	"console.registration": {"注册方式", "Registration"},
-	"console.hint":         {"这里的设置只有管理员可见，不会出现在用户菜单中。", "Only admins see these settings; they never appear in user menus."},
-	"console.commands":     {"后台命令：/mode /cron /cmd /ws /runs /file /health /skills /announce", "Backend commands: /mode /cron /cmd /ws /runs /file /health /skills /announce"},
-	"brand.default":        {"（默认）", "(default)"},
-	"brand.name":           {"名称", "Name"},
-	"brand.author":         {"作者", "Author"},
-	"brand.support":        {"支持说明", "Support text"},
-	"brand.link":           {"支持链接", "Support link"},
-	"brand.hint":           {"点按下方按钮后直接发送新内容。名称显示在菜单、帮助、注册页与公告中。", "Tap a button, then send the new value. The name appears in menus, help, the sign-up page and announcements."},
-	"brand.edit_name":      {"修改名称", "Edit name"},
-	"brand.edit_author":    {"修改作者", "Edit author"},
-	"brand.edit_support":   {"修改支持说明", "Edit support text"},
-	"brand.edit_link":      {"修改链接", "Edit link"},
+	"brand.default":      {"（默认）", " (default)"},
+	"brand.name":         {"名称", "Name"},
+	"brand.author":       {"作者", "Author"},
+	"brand.support":      {"支持说明", "Support text"},
+	"brand.link":         {"支持链接", "Support link"},
+	"brand.edit_name":    {"修改名称", "Edit name"},
+	"brand.edit_author":  {"修改作者", "Edit author"},
+	"brand.edit_support": {"修改支持说明", "Edit support text"},
+	"brand.edit_link":    {"修改链接", "Edit link"},
 
 	// registration
 	"reg.mode.off":           {"关闭", "Off"},
@@ -486,28 +426,130 @@ var messages = map[string][2]string{
 	"reg.already_user":       {"你已经是用户，直接发送任务即可。", "You already have access; just send a task."},
 
 	// announcements
-	"notice.title":      {"公告", "Announcement"},
-	"notice.empty":      {"暂无公告。", "No announcements yet."},
-	"notice.more":       {"另有 %d 条较早的公告", "%d older announcements"},
-	"notice.admin_hint": {"确认后推送给全部 %d 位用户，用户也可在菜单“公告”中查看。", "After you confirm, it is pushed to all %d users and listed under Notices."},
-	"notice.new":        {"发布新公告", "New announcement"},
-	"notice.del":        {"删除 #%d", "Delete #%d"},
-	"notice.delivered":  {"送达 %d/%d", "delivered %d/%d"},
-	"notice.usage":      {"用法：/announce 公告内容（会先预览）", "Usage: /announce text (preview first)"},
-	"notice.too_long":   {"公告最多 %d 字。", "Announcements are limited to %d characters."},
-	"notice.preview":    {"预览 · 确认后推送给 %d 位用户", "Preview · confirm to push to %d users"},
-	"notice.confirm":    {"确认发布", "Publish"},
-	"notice.cancel":     {"取消", "Cancel"},
-	"notice.no_draft":   {"没有待发布的公告。", "No draft to publish."},
-	"notice.sending":    {"公告 #%d 已发布，正在推送给 %d 位用户…", "Announcement #%d published; pushing to %d users…"},
-	"notice.published":  {"公告 #%d 已发布 · 送达 %d/%d", "Announcement #%d published · delivered %d/%d"},
-	"notice.confirmed":  {"已发布", "Published"},
-	"notice.cancelled":  {"已取消发布。", "Publishing cancelled."},
-	"notice.not_found":  {"没有这条公告。", "No such announcement."},
-	"notice.deleted":    {"已删除公告 #%d", "Deleted announcement #%d"},
+	"notice.title":     {"公告", "Announcement"},
+	"notice.empty":     {"暂无公告。", "No announcements yet."},
+	"notice.more":      {"另有 %d 条较早的公告", "%d older announcements"},
+	"notice.del":       {"删除 #%d", "Delete #%d"},
+	"notice.delivered": {"送达 %d/%d", "delivered %d/%d"},
+	"notice.published": {"公告 #%d 已发布 · 送达 %d/%d", "Announcement #%d published · delivered %d/%d"},
+	"notice.not_found": {"没有这条公告。", "No such announcement."},
+	"notice.deleted":   {"已删除公告 #%d", "Deleted announcement #%d"},
 
 	// help additions
-	"help.notice":  {"查看公告", "announcements"},
-	"help.about":   {"支持作者", "support the author"},
-	"help.console": {"管理后台：用户、注册、公告、名称、服务商、提示词等", "admin console: users, sign-ups, announcements, name, providers, prompts…"},
+	"help.notice": {"查看公告", "announcements"},
+	"help.about":  {"支持作者", "support the author"},
+
+	// Telegram pointers to the server terminal
+	"terminal.title":  {"服务器终端管理", "Server terminal"},
+	"terminal.body":   {"用户、注册审核、公告、名称与作者、服务商、工作区、提示词、定时任务、快捷指令、技能、自检和日志都在服务器终端管理。登录服务器后运行：", "Users, sign-ups, announcements, name and author, providers, workspace, prompts, schedules, shortcuts, skills, health and logs are managed in the server terminal. On the server run:"},
+	"terminal.moved":  {"该功能已移至服务器终端：tg-agent admin", "Moved to the server terminal: tg-agent admin"},
+	"reg.review_hint": {"请在服务器终端审核：", "Review it in the server terminal:"},
+	"help.usage":      {"用量与余额", "usage and balance"},
+	"help.terminal":   {"其余管理在服务器终端：", "Everything else is managed in the server terminal:"},
+
+	// server terminal (tg-agent admin)
+	"cli.title":             {"终端管理", "Terminal admin"},
+	"cli.running":           {"机器人运行中，修改立即生效", "Bot is running; changes apply at once"},
+	"cli.offline":           {"机器人未运行，修改在下次启动时生效", "Bot is not running; changes apply on its next start"},
+	"cli.summary":           {"用户 %d 人 · 待审核 %d · 公告 %d 条", "%d users · %d pending · %d announcements"},
+	"cli.registration":      {"注册方式", "Registration"},
+	"cli.choose":            {"请选择", "Choose"},
+	"cli.invalid":           {"请输入列表中的编号。", "Enter one of the numbers."},
+	"cli.back":              {"返回", "Back"},
+	"cli.exit":              {"退出", "Exit"},
+	"cli.bye":               {"已退出。", "Bye."},
+	"cli.none":              {"（无）", "(none)"},
+	"cli.runs":              {"执行记录", "Run logs"},
+	"cli.pending":           {"待审核 %d 人：", "%d pending:"},
+	"cli.preview":           {"预览", "Preview"},
+	"cli.sending":           {"正在推送…", "Pushing…"},
+	"cli.cancelled":         {"已取消。", "Cancelled."},
+	"cli.need_bot":          {"该操作需要机器人正在运行。", "This needs the bot to be running."},
+	"cli.socket_error":      {"与运行中的机器人通信失败", "Talking to the running bot failed"},
+	"cli.unknown_op":        {"未知命令：%s。运行 tg-agent admin help 查看用法。", "Unknown command: %s. Run tg-agent admin help for usage."},
+	"cli.multiline":         {"请输入内容（支持 Markdown），单独一行输入 . 结束：", "Enter the text (Markdown supported); finish with a line containing only a dot:"},
+	"cli.multiline_clear":   {"请输入内容（支持 Markdown），单独一行输入 . 结束；只输入 - 表示清空：", "Enter the text (Markdown supported); finish with a line containing only a dot; a single - clears it:"},
+	"cli.confirm_publish":   {"推送给 %s 位用户，确认发布？(y/N)", "Push to %s users? (y/N)"},
+	"cli.ws_switched":       {"工作区已切换：%s", "Workspace switched to %s"},
+	"cli.input_id":          {"用户 ID", "User ID"},
+	"cli.input_index_or_id": {"序号或用户 ID", "Number or user ID"},
+	"cli.input_mode":        {"注册方式：1 关闭 / 2 需审核 / 3 开放", "Registration: 1 off / 2 approval / 3 open"},
+	"cli.input_value":       {"新的内容（输入 - 清空）", "New value (- clears it)"},
+	"cli.input_name":        {"名称", "Name"},
+	"cli.input_url":         {"base_url（如 https://api.deepseek.com）", "base_url (e.g. https://api.deepseek.com)"},
+	"cli.input_key":         {"api_key（可写 env:变量名）", "api_key (or env:VARIABLE)"},
+	"cli.input_models":      {"模型，逗号分隔", "Models, comma separated"},
+	"cli.input_path":        {"绝对路径或编号", "Absolute path or number"},
+	"cli.input_index":       {"编号", "Number"},
+	"cli.input_rule":        {"时间规则（如 daily 09:00 / every 2h / in 45m）", "Rule (e.g. daily 09:00 / every 2h / in 45m)"},
+	"cli.input_task":        {"任务内容", "Task"},
+	"cli.input_lines":       {"显示行数（默认 40）", "Lines (default 40)"},
+	"cli.input_run":         {"查看第几条（回车返回）", "Which one to show (Enter to go back)"},
+	"cli.act.add_admin":     {"添加管理员", "Add admin"},
+	"cli.act.del_admin":     {"移除管理员", "Remove admin"},
+	"cli.act.add_friend":    {"添加用户", "Add user"},
+	"cli.act.del_friend":    {"移除用户", "Remove user"},
+	"cli.act.ban":           {"封禁", "Ban"},
+	"cli.act.unban":         {"解除封禁", "Unban"},
+	"cli.act.approve":       {"通过", "Approve"},
+	"cli.act.reject":        {"拒绝", "Reject"},
+	"cli.act.reg_ban":       {"封禁申请人", "Ban applicant"},
+	"cli.act.reg_mode":      {"切换注册方式", "Change registration mode"},
+	"cli.act.publish":       {"发布新公告", "Publish"},
+	"cli.act.notice_del":    {"删除公告", "Delete"},
+	"cli.act.use":           {"切换", "Switch"},
+	"cli.act.add":           {"添加", "Add"},
+	"cli.act.del":           {"删除", "Delete"},
+	"cli.act.ws_use":        {"切换工作区", "Switch"},
+	"cli.act.ws_add":        {"收藏", "Save"},
+	"cli.act.ws_del":        {"移除收藏", "Remove"},
+	"cli.act.edit":          {"修改", "Edit"},
+	"cli.act.clear":         {"清空", "Clear"},
+	"cli.act.cron_add":      {"添加", "Add"},
+	"cli.act.cron_del":      {"删除", "Delete"},
+	"cli.act.cron_pause":    {"暂停", "Pause"},
+	"cli.act.cron_resume":   {"恢复", "Resume"},
+	"cli.act.cron_run":      {"立即运行", "Run now"},
+	"cli.act.cmd_add":       {"添加", "Add"},
+	"cli.act.cmd_del":       {"删除", "Delete"},
+	"cli.act.install":       {"安装", "Install"},
+	"cli.act.sync":          {"同步全部", "Sync all"},
+	"cli.usage_users":       {"用法：users add|del admin|friend|ban <用户ID>", "Usage: users add|del admin|friend|ban <user id>"},
+	"cli.usage_reg":         {"用法：reg approve|reject|ban <用户ID>", "Usage: reg approve|reject|ban <user id>"},
+	"cli.usage_reg_mode":    {"用法：reg mode off|approval|open", "Usage: reg mode off|approval|open"},
+	"cli.usage_notice":      {"用法：notice publish <内容>（- 从标准输入读取）| notice del <编号>", "Usage: notice publish <text> (- reads stdin) | notice del <id>"},
+	"cli.usage_brand":       {"用法：brand set name|author|text|link <内容>（- 清空）", "Usage: brand set name|author|text|link <value> (- clears)"},
+	"cli.usage_provider":    {"用法：provider use <名称> | add <名称> <base_url> <api_key> <模型1,模型2> | del <名称>", "Usage: provider use <name> | add <name> <base_url> <api_key> <model1,model2> | del <name>"},
+	"cli.usage_prompt":      {"用法：prompt show system|persona | prompt set system|persona <内容>（- 清空）", "Usage: prompt show system|persona | prompt set system|persona <text> (- clears)"},
+	"cli.usage_cmd":         {"用法：cmd add <名称> <提示词> | cmd del <名称>", "Usage: cmd add <name> <prompt> | cmd del <name>"},
+	"cli.usage_runs":        {"用法：runs show <编号>", "Usage: runs show <number>"},
+	"cli.usage": {`服务器终端管理
+  %[1]s admin                         交互式菜单
+  %[1]s admin status                  概览
+  %[1]s admin users [add|del admin|friend|ban <ID>]
+  %[1]s admin reg [approve|reject|ban <ID> | mode off|approval|open]
+  %[1]s admin notice [publish <内容> | publish - | del <编号>]
+  %[1]s admin brand [set name|author|text|link <内容>]
+  %[1]s admin provider [use <名称> | add <名称> <url> <key> <模型,…> | del <名称>]
+  %[1]s admin workspace [use <路径|编号> | add <路径> | del <编号>]
+  %[1]s admin prompt show|set system|persona [<内容>]
+  %[1]s admin cron [add <规则> <内容> | del|pause|resume|run <编号>]
+  %[1]s admin cmd [add <名称> <提示词> | del <名称>]
+  %[1]s admin skills [install <名称> | sync]
+  %[1]s admin health | log [行数] | config | runs [show <编号>]
+内容为 - 时表示清空（notice publish - 表示从标准输入读取）。机器人运行时修改立即生效。`, `Server terminal admin
+  %[1]s admin                         interactive menu
+  %[1]s admin status                  overview
+  %[1]s admin users [add|del admin|friend|ban <ID>]
+  %[1]s admin reg [approve|reject|ban <ID> | mode off|approval|open]
+  %[1]s admin notice [publish <text> | publish - | del <id>]
+  %[1]s admin brand [set name|author|text|link <value>]
+  %[1]s admin provider [use <name> | add <name> <url> <key> <models,…> | del <name>]
+  %[1]s admin workspace [use <path|number> | add <path> | del <number>]
+  %[1]s admin prompt show|set system|persona [<text>]
+  %[1]s admin cron [add <rule> <task> | del|pause|resume|run <id>]
+  %[1]s admin cmd [add <name> <prompt> | del <name>]
+  %[1]s admin skills [install <name> | sync]
+  %[1]s admin health | log [lines] | config | runs [show <number>]
+A value of - clears it ("notice publish -" reads standard input). Changes apply at once while the bot runs.`},
 }

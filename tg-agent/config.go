@@ -330,6 +330,46 @@ func validEffort(v string) bool {
 	return true
 }
 
+// configStamp remembers the config file as last loaded or saved, so a change
+// made by someone else (the terminal tool, a hand edit) is noticed.
+var configStamp struct {
+	sync.Mutex
+	mod  time.Time
+	size int64
+}
+
+func recordConfigStamp() {
+	info, err := os.Stat(configPath())
+	configStamp.Lock()
+	defer configStamp.Unlock()
+	if err != nil {
+		configStamp.mod, configStamp.size = time.Time{}, 0
+		return
+	}
+	configStamp.mod, configStamp.size = info.ModTime(), info.Size()
+}
+
+func configChangedOnDisk() bool {
+	info, err := os.Stat(configPath())
+	if err != nil {
+		return false
+	}
+	configStamp.Lock()
+	defer configStamp.Unlock()
+	return !info.ModTime().Equal(configStamp.mod) || info.Size() != configStamp.size
+}
+
+// reloadConfigIfChanged rereads config.json when it changed outside this process.
+func reloadConfigIfChanged() error {
+	if !configChangedOnDisk() {
+		return nil
+	}
+	if err := loadConfig(); err != nil {
+		return fmt.Errorf("配置文件有误，未做修改: %w", err)
+	}
+	return nil
+}
+
 func loadConfig() error {
 	b, e := os.ReadFile(configPath())
 	if e != nil {
@@ -351,6 +391,7 @@ func loadConfig() error {
 	cfgMu.Lock()
 	cfg = c
 	cfgMu.Unlock()
+	recordConfigStamp() // only a valid file becomes the known state
 	return nil
 }
 
@@ -393,6 +434,7 @@ func saveConfig(next ...Config) error {
 		return e
 	}
 	cfg = c
+	recordConfigStamp()
 	return nil
 }
 
@@ -400,6 +442,9 @@ func saveConfig(next ...Config) error {
 func updateConfig(fn func(*Config)) error {
 	configUpdateMu.Lock()
 	defer configUpdateMu.Unlock()
+	if err := reloadConfigIfChanged(); err != nil {
+		return err
+	}
 	c := configSnapshot()
 	fn(&c)
 	return saveConfig(c)

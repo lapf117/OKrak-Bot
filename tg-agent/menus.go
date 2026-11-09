@@ -106,7 +106,8 @@ func helpBody(uid int64) string {
 		"/memory|"+tr(lang, "help.memory"), "/lang zh|en|"+tr(lang, "help.lang"))
 	if isAdmin(uid) {
 		section(tr(lang, "help.admin"),
-			"/settings|"+tr(lang, "help.settings"), "/admin|"+tr(lang, "help.console"))
+			"/settings|"+tr(lang, "help.settings"), "/usage|"+tr(lang, "help.usage"))
+		b.WriteString("<i>" + esc(tr(lang, "help.terminal")) + "</i>\n<code>" + esc(adminCommandLine()) + "</code>\n")
 	}
 	b.WriteString("\n<i>" + esc(tr(lang, "help.tip")) + "</i>")
 	return b.String()

@@ -7,19 +7,26 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 var (
 	logFile *os.File
 	logMu   sync.Mutex
+	// logToStdout is off in the terminal admin tool so logs do not mix with its output.
+	logToStdout atomic.Bool
 )
+
+func init() { logToStdout.Store(true) }
 
 func logf(format string, a ...interface{}) {
 	line := fmt.Sprintf("[%s] %s\n", time.Now().Format("01-02 15:04:05"), redactSecrets(fmt.Sprintf(format, a...)))
 	logMu.Lock()
 	defer logMu.Unlock()
-	fmt.Print(line)
+	if logToStdout.Load() {
+		fmt.Print(line)
+	}
 	if logFile != nil {
 		_, _ = logFile.WriteString(line)
 	}
@@ -134,6 +141,7 @@ func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
 	}
 	name := f.Name()
 	defer os.Remove(name)
+	inheritOwner(f, path) // keep files owned by the service user when an admin runs as root
 	if err = f.Chmod(mode); err == nil {
 		_, err = f.Write(data)
 	}

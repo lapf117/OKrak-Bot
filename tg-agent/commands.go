@@ -2,10 +2,8 @@ package main
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 // uiMu serializes interactive configuration changes from commands and buttons.
@@ -67,14 +65,6 @@ func handleCommand(chatID, uid int64, t, low string) bool {
 		retryLastTask(chatID, uid)
 	case "/cmd":
 		return handleQuickCmd(chatID, uid, rest)
-	case "/cron", "/schedule":
-		return handleCron(chatID, uid, rest)
-	case "/skills": // skills are managed by the agent; the command is admin-only
-		if !isAdmin(uid) {
-			sendMessage(chatID, tr(lang, "err.admin_only"), nil)
-			return true
-		}
-		return handleSkillsCommand(chatID, uid, rest)
 	case "/mode", "/approval", "/execution":
 		return handleExecutionCommand(chatID, uid, rest)
 	case "/settings":
@@ -83,45 +73,24 @@ func handleCommand(chatID, uid int64, t, low string) bool {
 			return true
 		}
 		sendUI(chatID, settingsText(uid), adminMenu(uid))
-	case "/console", "/backend", "/后台":
-		sendConsole(chatID, uid)
+	case "/model", "/effort":
+		return handleAdminCommand(chatID, uid, cmd, rest)
 	case "/notice", "/notices", "/公告":
-		handleNoticeCommand(chatID, uid, "/notice", rest)
-	case "/announce", "/发布公告":
-		handleNoticeCommand(chatID, uid, "/announce", rest)
+		text, kb := noticesPanel(uid)
+		sendUI(chatID, text, kb)
 	case "/about", "/support", "/支持":
 		text, kb := aboutPanel(uid)
 		sendUI(chatID, text, kb)
 	case "/register", "/signup", "/注册":
 		sendMessage(chatID, tr(lang, "reg.already_user"), nil)
-	case "/cancel":
-		if cancelAdminInput(uid) {
-			sendMessage(chatID, tr(lang, "input.cancelled"), nil)
+	case "/admin", "/console", "/backend", "/后台", "/announce", "/发布公告", "/provider", "/persona", "/system",
+		"/friend", "/ban", "/ws", "/workspace", "/cron", "/schedule", "/skills", "/health", "/runs", "/img", "/file":
+		// Management lives in the server terminal: tg-agent admin.
+		if isAdmin(uid) {
+			sendUI(chatID, terminalHint(lang), nil)
 		} else {
-			sendMessage(chatID, tr(lang, "input.none"), nil)
+			sendMessage(chatID, tr(lang, "err.unknown_command"), nil)
 		}
-	case "/health":
-		if !isAdmin(uid) {
-			sendMessage(chatID, tr(lang, "err.admin_only"), nil)
-			return true
-		}
-		sendUI(chatID, healthCheck(lang), nil)
-	case "/runs":
-		if !isAdmin(uid) {
-			sendMessage(chatID, tr(lang, "err.admin_only"), nil)
-			return true
-		}
-		sendUI(chatID, listRunsHTML(lang, 10), runsKeyboard(lang, 5))
-	case "/img", "/file":
-		return handleGetFile(chatID, uid, cmd, rest)
-	case "/admin":
-		if rest == "" {
-			sendConsole(chatID, uid) // /admin opens the console; /admin add|rem <id> edits the admin list
-			return true
-		}
-		return handleAdminCommand(chatID, uid, cmd, rest)
-	case "/model", "/provider", "/persona", "/system", "/effort", "/friend", "/ban", "/ws", "/workspace":
-		return handleAdminCommand(chatID, uid, cmd, rest)
 	default:
 		if looksLikePath(cmd) {
 			return false // e.g. "/etc/hosts 是什么" is a task, not a command
@@ -133,21 +102,15 @@ func handleCommand(chatID, uid int64, t, low string) bool {
 
 func commandMutatesConfig(command, rest string) bool {
 	switch command {
-	case "/model", "/provider", "/persona", "/system", "/admin", "/friend", "/ban", "/ws", "/workspace", "/effort", "/mode", "/approval", "/execution":
+	case "/model", "/effort", "/mode", "/approval", "/execution":
 		return rest != ""
-	case "/cmd":
-		fields := strings.Fields(rest)
-		return len(fields) > 0 && (fields[0] == "add" || fields[0] == "del")
 	}
 	return false
 }
 
-func persistUIConfig(chatID int64, next Config) bool {
-	if err := saveConfig(next); err != nil {
-		sendMessage(chatID, tr(langFor(chatID), "err.save", redactSecrets(err.Error())), nil)
-		return false
-	}
-	return true
+// terminalHint tells admins where management moved: the server terminal.
+func terminalHint(lang string) string {
+	return "<b>▍" + esc(tr(lang, "terminal.title")) + "</b>\n" + esc(tr(lang, "terminal.body")) + "\n\n<code>" + esc(adminCommandLine()) + "</code>"
 }
 
 func handleLangCommand(chatID, uid int64, rest string) {
@@ -219,31 +182,6 @@ func retryLastTask(chatID, uid int64) {
 	go runUserTask(chatID, uid, task.Text, task.Images)
 }
 
-func handleGetFile(chatID, uid int64, cmd, rest string) bool {
-	lang := langFor(uid)
-	path := strings.TrimSpace(rest)
-	if path == "" {
-		sendMessage(chatID, tr(lang, "file.usage", cmd), nil)
-		return true
-	}
-	if !isAdmin(uid) {
-		sendMessage(chatID, tr(lang, "err.admin_only"), nil)
-		return true
-	}
-	if !strings.HasPrefix(path, "/") {
-		path = absPath(path) // relative to the workspace
-	}
-	data, err := readDeliverable(path)
-	if err != nil {
-		sendMessage(chatID, tr(lang, "file.error", err.Error()), nil)
-		return true
-	}
-	if !sendByExt(chatID, path, data) {
-		sendMessage(chatID, tr(lang, "file.send_failed"), nil)
-	}
-	return true
-}
-
 // ---------------- quick commands ----------------
 
 type QuickCmd struct {
@@ -272,55 +210,20 @@ func quickList(lang string) string {
 	return b.String()
 }
 
+// handleQuickCmd runs a shortcut: /cmd <name> [extra]. Shortcuts are
+// created and removed in the server terminal.
 func handleQuickCmd(chatID, uid int64, rest string) bool {
 	lang := langFor(uid)
-	c := configSnapshot()
 	f := strings.Fields(rest)
 	if len(f) == 0 {
-		sendMessage(chatID, tr(lang, "quick.title")+"\n\n"+quickList(lang)+"\n"+tr(lang, "quick.help"), nil)
+		sendMessage(chatID, tr(lang, "quick.title")+"\n\n"+quickList(lang), nil)
 		return true
 	}
-	switch f[0] {
-	case "add":
-		if !isAdmin(uid) {
+	if f[0] == "add" || f[0] == "del" {
+		if isAdmin(uid) {
+			sendUI(chatID, terminalHint(lang), nil)
+		} else {
 			sendMessage(chatID, tr(lang, "err.admin_only"), nil)
-			return true
-		}
-		prompt := argsAfter(rest, 2)
-		if len(f) < 3 || prompt == "" {
-			sendMessage(chatID, tr(lang, "quick.usage"), nil)
-			return true
-		}
-		name := f[1]
-		var keep []QuickCmd
-		for _, q := range c.QuickCommands {
-			if q.Name != name {
-				keep = append(keep, q)
-			}
-		}
-		c.QuickCommands = append(keep, QuickCmd{Name: name, Prompt: prompt})
-		if persistUIConfig(chatID, c) {
-			sendMessage(chatID, tr(lang, "quick.added", name, name), nil)
-		}
-		return true
-	case "del":
-		if !isAdmin(uid) {
-			sendMessage(chatID, tr(lang, "err.admin_only"), nil)
-			return true
-		}
-		if len(f) < 2 {
-			sendMessage(chatID, tr(lang, "quick.usage"), nil)
-			return true
-		}
-		var keep []QuickCmd
-		for _, q := range c.QuickCommands {
-			if q.Name != f[1] {
-				keep = append(keep, q)
-			}
-		}
-		c.QuickCommands = keep
-		if persistUIConfig(chatID, c) {
-			sendMessage(chatID, tr(lang, "quick.deleted", f[1]), nil)
 		}
 		return true
 	}
@@ -334,94 +237,4 @@ func handleQuickCmd(chatID, uid int64, rest string) bool {
 	}
 	sendMessage(chatID, tr(lang, "quick.unknown")+"\n\n"+quickList(lang), nil)
 	return true
-}
-
-// ---------------- /cron ----------------
-
-func cronUsage(lang string) string { return tr(lang, "cron.usage") }
-
-func handleCron(chatID, uid int64, rest string) bool {
-	lang := langFor(uid)
-	if !isAdmin(uid) {
-		sendMessage(chatID, tr(lang, "err.admin_only"), nil)
-		return true
-	}
-	f := strings.Fields(rest)
-	if len(f) == 0 || f[0] == "list" {
-		sendUI(chatID, cronPanel(lang), cronKeyboard(lang))
-		return true
-	}
-	switch f[0] {
-	case "add":
-		spec, used, err := parseScheduleFields(f[1:], time.Now(), scheduleLocation(configSnapshot()))
-		if err != nil {
-			sendMessage(chatID, err.Error()+"\n\n"+cronUsage(lang), nil)
-			return true
-		}
-		prompt := argsAfter(rest, 1+used)
-		job, err := addCronJob(chatID, uid, spec, prompt, "user")
-		if err != nil {
-			sendMessage(chatID, err.Error(), nil)
-			return true
-		}
-		sendMessage(chatID, tr(lang, "cron.created", job.ID, spec.describe(lang), formatRunTime(job.NextRun), oneLine(prompt, 60)), nil)
-	case "del", "rm", "pause", "resume", "run":
-		if len(f) < 2 {
-			sendMessage(chatID, cronUsage(lang), nil)
-			return true
-		}
-		id, convErr := strconv.Atoi(strings.TrimPrefix(f[1], "#"))
-		if convErr != nil {
-			sendMessage(chatID, cronUsage(lang), nil)
-			return true
-		}
-		var err error
-		switch f[0] {
-		case "del", "rm":
-			err = deleteCronJob(id, 0)
-		case "pause":
-			err = setCronEnabled(id, 0, false)
-		case "resume":
-			err = setCronEnabled(id, 0, true)
-		case "run":
-			err = runCronNow(id)
-		}
-		if err != nil {
-			sendMessage(chatID, err.Error(), nil)
-			return true
-		}
-		sendMessage(chatID, tr(lang, "cron.updated", id), nil)
-	default:
-		sendMessage(chatID, cronUsage(lang), nil)
-	}
-	return true
-}
-
-func cronPanel(lang string) string {
-	list := listCronText(lang, 0)
-	if list == "" {
-		list = tr(lang, "cron.empty")
-	}
-	return "<b>" + esc(tr(lang, "cron.title")) + "</b>\n\n" + esc(list) + "\n<i>" + esc(cronUsage(lang)) + "</i>"
-}
-
-func cronKeyboard(lang string) interface{} {
-	var rows [][]Btn
-	for i, j := range cronSnapshot() {
-		if i >= 8 {
-			break
-		}
-		id := strconv.Itoa(j.ID)
-		row := []Btn{btn(tr(lang, "cron.run")+" #"+id, "cron:run:"+id)}
-		switch {
-		case j.Done:
-		case j.Enabled:
-			row = append(row, btn(tr(lang, "cron.pause")+" #"+id, "cron:pause:"+id))
-		default:
-			row = append(row, btn(tr(lang, "cron.resume")+" #"+id, "cron:resume:"+id))
-		}
-		rows = append(rows, append(row, btn(tr(lang, "cron.del")+" #"+id, "cron:del:"+id)))
-	}
-	rows = append(rows, []Btn{btn(tr(lang, "btn.refresh"), "act:cron"), btn(tr(lang, "btn.back"), "adm:root")})
-	return keyboard(rows)
 }
