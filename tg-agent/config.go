@@ -75,8 +75,13 @@ type Config struct {
 	AutoFetchSkills        bool            `json:"auto_fetch_skills"`
 	SkillSources           []SkillSource   `json:"skill_sources"`
 	SkillAllowedHosts      []string        `json:"skill_allowed_hosts"`
-	Language               string          `json:"language"` // auto | zh | en
-	Timezone               string          `json:"timezone"` // IANA name for daily schedules; empty = host local
+	BotName                string          `json:"bot_name"`     // shown in menus and announcements; empty = built-in name
+	Author                 string          `json:"author"`       // shown under "Support the author"
+	SupportText            string          `json:"support_text"` // Markdown shown under "Support the author"
+	SupportURL             string          `json:"support_url"`  // optional link button (http/https/tg)
+	Registration           string          `json:"registration"` // off | approval | open
+	Language               string          `json:"language"`     // auto | zh | en
+	Timezone               string          `json:"timezone"`     // IANA name for daily schedules; empty = host local
 }
 
 var (
@@ -182,6 +187,9 @@ func normalizeConfig(c *Config) {
 	if c.Language == "" {
 		c.Language = "auto"
 	}
+	if c.Registration == "" {
+		c.Registration = "approval"
+	}
 	if c.SSH.Port == 0 {
 		c.SSH.Port = 22
 	}
@@ -243,6 +251,17 @@ func validateConfig(c Config) error {
 	}
 	if c.Temperature < 0 || c.Temperature > 2 {
 		return fmt.Errorf("temperature 必须在 0..2")
+	}
+	switch c.Registration {
+	case "", "off", "approval", "open":
+	default:
+		return fmt.Errorf("registration 必须为 off、approval 或 open")
+	}
+	if len([]rune(c.BotName)) > 64 || len([]rune(c.Author)) > 64 || len([]rune(c.SupportText)) > 3000 {
+		return fmt.Errorf("bot_name/author 最多 64 字，support_text 最多 3000 字")
+	}
+	if c.SupportURL != "" && !validLinkURL(c.SupportURL) {
+		return fmt.Errorf("support_url 必须是 http(s):// 或 tg:// 链接")
 	}
 	if c.LLMRetries < -1 || c.LLMRetries > 20 {
 		return fmt.Errorf("llm_retries 范围 -1..20（0 表示默认 6 次，-1 表示不重试）")

@@ -37,7 +37,7 @@ var displayItems = []displayItem{
 	{Key: "tools", Group: displayGroupFooter, Default: true, Aliases: []string{"tool", "工具", "工具调用"}},
 	{Key: "cmds", Group: displayGroupFooter, Default: true, Aliases: []string{"cmd", "commands", "command", "命令"}},
 	{Key: "tokens", Group: displayGroupFooter, Default: true, Aliases: []string{"token", "用量"}},
-	{Key: "balance", Group: displayGroupFooter, Default: true, AdminOnly: true, Aliases: []string{"余额"}},
+	{Key: "balance", Group: displayGroupFooter, Default: false, AdminOnly: true, Aliases: []string{"余额"}},
 	{Key: "model", Group: displayGroupFooter, Default: false, Aliases: []string{"模型", "模型名"}},
 }
 

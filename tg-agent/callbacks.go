@@ -39,6 +39,17 @@ func handleCallback(cb CallbackQuery) {
 	touchUser(cb.From)
 	chatID, msgID, uid, data := cb.Message.Chat.ID, cb.Message.MessageID, cb.From.ID, cb.Data
 	lang := langFor(uid)
+	if data == "reg:apply" {
+		answerCallback(cb.ID)
+		submitRegistration(chatID, cb.From, "")
+		// Drop the button from the welcome message whatever the outcome.
+		if allowed(uid) {
+			editUI(chatID, msgID, "<b>▍"+esc(appName(lang))+"</b>\n"+esc(tr(lang, "reg.intro")), nil)
+		} else {
+			editUI(chatID, msgID, guestWelcome(uid), nil)
+		}
+		return
+	}
 	if !allowed(uid) || msgID == 0 {
 		answerCallback(cb.ID)
 		return
@@ -79,6 +90,26 @@ func handleCallback(cb CallbackQuery) {
 		retryLastTask(chatID, uid)
 	case data == "nav:display", strings.HasPrefix(data, "show:"):
 		toast = handleDisplayCallback(chatID, msgID, uid, data)
+	case data == "act:notice":
+		text, kb := noticesPanel(uid)
+		editUI(chatID, msgID, text, kb)
+	case data == "act:about":
+		text, kb := aboutPanel(uid)
+		editUI(chatID, msgID, text, kb)
+
+	// ---------- admin console ----------
+	case strings.HasPrefix(data, "adm:"):
+		if needAdmin() {
+			toast = handleConsoleCallback(chatID, msgID, uid, data)
+		}
+	case strings.HasPrefix(data, "reg:"), strings.HasPrefix(data, "regp:"):
+		if needAdmin() {
+			toast = handleRegistrationCallback(chatID, msgID, uid, data)
+		}
+	case strings.HasPrefix(data, "ntc:"):
+		if needAdmin() {
+			toast = handleNoticeCallback(chatID, msgID, uid, data)
+		}
 	case data == "act:lang":
 		next := langEN
 		if lang == langEN {
@@ -109,28 +140,30 @@ func handleCallback(cb CallbackQuery) {
 		_ = updatePrefs(uid, func(p *UserPrefs) { p.Steps = next })
 		toast = tr(lang, "steps."+next)
 		if admin {
-			editUI(chatID, msgID, "<b>"+esc(tr(lang, "settings.title"))+"</b>\n\n"+esc(tr(lang, "settings.hint")), adminMenu(uid))
+			editUI(chatID, msgID, settingsText(uid), adminMenu(uid))
 		}
 	case data == "nav:skills":
-		editUI(chatID, msgID, skillsPanel(lang), backKB(lang, "nav:root"))
+		if needAdmin() {
+			editUI(chatID, msgID, skillsPanel(lang), backKB(lang, "adm:root"))
+		}
 
 	// ---------- admin panels ----------
 	case data == "nav:admin", data == "nav:settings":
 		if needAdmin() {
-			editUI(chatID, msgID, "<b>"+esc(tr(lang, "settings.title"))+"</b>\n\n"+esc(tr(lang, "settings.hint")), adminMenu(uid))
+			editUI(chatID, msgID, settingsText(uid), adminMenu(uid))
 		}
-	case data == "nav:advanced":
+	case data == "nav:advanced": // buttons from earlier versions
 		if needAdmin() {
-			editUI(chatID, msgID, "<b>"+esc(tr(lang, "settings.advanced"))+"</b>", advancedMenu(uid))
+			toast = handleConsoleCallback(chatID, msgID, uid, data)
 		}
 	case data == "nav:workspace":
 		if needAdmin() {
-			editUI(chatID, msgID, "<b>"+esc(tr(lang, "ws.title"))+"</b>\n\n<code>"+esc(c.Workspace)+"</code>\n\n<i>"+esc(tr(lang, "ws.usage"))+"</i>", backKB(lang, "nav:settings"))
+			editUI(chatID, msgID, "<b>"+esc(tr(lang, "ws.title"))+"</b>\n\n<code>"+esc(c.Workspace)+"</code>\n\n<i>"+esc(tr(lang, "ws.usage"))+"</i>", backKB(lang, "adm:root"))
 		}
 	case data == "act:health":
 		if needAdmin() {
 			editUI(chatID, msgID, esc(tr(lang, "health.running")), nil)
-			editUI(chatID, msgID, healthCheck(lang), keyboard([][]Btn{{btn(tr(lang, "btn.refresh"), "act:health"), btn(tr(lang, "btn.back"), "nav:advanced")}}))
+			editUI(chatID, msgID, healthCheck(lang), keyboard([][]Btn{{btn(tr(lang, "btn.refresh"), "act:health"), btn(tr(lang, "btn.back"), "adm:root")}}))
 		}
 	case data == "act:runs":
 		if needAdmin() {
@@ -181,15 +214,15 @@ func handleCallback(cb CallbackQuery) {
 		editUI(chatID, msgID, cronPanel(lang), cronKeyboard(lang))
 	case data == "act:quick":
 		if needAdmin() {
-			editUI(chatID, msgID, "<b>"+esc(tr(lang, "quick.title"))+"</b>\n\n"+esc(quickList(lang))+"\n<i>"+esc(tr(lang, "quick.help"))+"</i>", backKB(lang, "nav:settings"))
+			editUI(chatID, msgID, "<b>"+esc(tr(lang, "quick.title"))+"</b>\n\n"+esc(quickList(lang))+"\n<i>"+esc(tr(lang, "quick.help"))+"</i>", backKB(lang, "adm:root"))
 		}
 	case data == "act:config":
 		if needAdmin() {
-			editUI(chatID, msgID, configOverview(lang), backKB(lang, "nav:advanced"))
+			editUI(chatID, msgID, configOverview(lang), backKB(lang, "adm:root"))
 		}
 	case data == "act:log":
 		if needAdmin() {
-			editUI(chatID, msgID, "<b>"+esc(tr(lang, "log.title"))+"</b>\n<pre>"+esc(short(tailLog(20), 3200))+"</pre>", keyboard([][]Btn{{btn(tr(lang, "btn.refresh"), "act:log"), btn(tr(lang, "btn.back"), "nav:advanced")}}))
+			editUI(chatID, msgID, "<b>"+esc(tr(lang, "log.title"))+"</b>\n<pre>"+esc(short(tailLog(20), 3200))+"</pre>", keyboard([][]Btn{{btn(tr(lang, "btn.refresh"), "act:log"), btn(tr(lang, "btn.back"), "adm:root")}}))
 		}
 	case data == "nav:effort":
 		if !needAdmin() {
@@ -228,7 +261,7 @@ func handleCallback(cb CallbackQuery) {
 		for _, m := range p.Models {
 			rows = append(rows, []Btn{btn(mark(c.Model, short(m, 40)), settingCallback("model", m))})
 		}
-		rows = append(rows, []Btn{btn(tr(lang, "btn.provider"), "nav:provider"), btn(tr(lang, "btn.back"), "nav:settings")})
+		rows = append(rows, []Btn{btn(tr(lang, "btn.back"), "nav:settings")})
 		editUI(chatID, msgID, "<b>"+esc(tr(lang, "model.pick"))+"</b>", keyboard(rows))
 	case strings.HasPrefix(data, "set:model:"):
 		if !needAdmin() {
@@ -254,7 +287,7 @@ func handleCallback(cb CallbackQuery) {
 		for _, p := range c.Provider {
 			rows = append(rows, []Btn{btn(mark(c.ProviderName, short(p.Name, 40)), settingCallback("provider", p.Name))})
 		}
-		rows = append(rows, []Btn{btn(tr(lang, "btn.back"), "nav:advanced")})
+		rows = append(rows, []Btn{btn(tr(lang, "btn.back"), "adm:root")})
 		editUI(chatID, msgID, "<b>"+esc(tr(lang, "provider.pick"))+"</b>\n\n<i>"+esc(tr(lang, "provider.usage"))+"</i>", keyboard(rows))
 	case strings.HasPrefix(data, "set:provider:"):
 		if !needAdmin() {
@@ -281,7 +314,7 @@ func handleCallback(cb CallbackQuery) {
 		if strings.TrimSpace(cur) == "" {
 			cur = tr(lang, "prompt.unset")
 		}
-		editUI(chatID, msgID, "<b>"+esc(tr(lang, key+".title"))+"</b>\n\n"+esc(short(cur, 3000))+"\n\n<i>"+esc(tr(lang, key+".usage"))+"</i>", backKB(lang, "nav:advanced"))
+		editUI(chatID, msgID, "<b>"+esc(tr(lang, key+".title"))+"</b>\n\n"+esc(short(cur, 3000))+"\n\n<i>"+esc(tr(lang, key+".usage"))+"</i>", backKB(lang, "adm:root"))
 	case data == "nav:users":
 		if !needAdmin() {
 			return
@@ -298,7 +331,7 @@ func handleCallback(cb CallbackQuery) {
 			addRow(f, "")
 		}
 		rows = append(rows, []Btn{btn(tr(lang, "users.all"), "nav:allusers"), btn(tr(lang, "users.bans"), "nav:bans")})
-		rows = append(rows, []Btn{btn(tr(lang, "btn.back"), "nav:advanced")})
+		rows = append(rows, []Btn{btn(tr(lang, "btn.back"), "adm:root")})
 		editUI(chatID, msgID, "<b>"+esc(tr(lang, "users.title"))+"</b>\n\n"+esc(tr(lang, "users.summary", len(c.Admins), len(c.Friends), len(c.Banned))), keyboard(rows))
 	case data == "nav:allusers":
 		if !needAdmin() {
@@ -391,6 +424,9 @@ func handleCallback(cb CallbackQuery) {
 		}
 		if persistUIConfig(chatID, c) {
 			toast = tr(lang, "toast.saved")
+			if parts[1] == "admin" {
+				go registerChatCommands(id, add)
+			}
 			editUI(chatID, msgID, esc(tr(lang, "list.updated", tr(lang, "list."+parts[1]), id)), backKB(lang, "nav:users"))
 		}
 	}

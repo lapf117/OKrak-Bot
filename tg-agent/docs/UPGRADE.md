@@ -26,6 +26,13 @@
 
 如使用 systemd，请将服务用户、可写目录和 EnvironmentFile 按部署实际位置修改。启动失败返回非零退出码，模板可自动重启。
 
+## 2.2 → 2.3
+
+- 新增可选配置：`registration`（默认 `approval`）、`bot_name`、`author`、`support_text`、`support_url`。**行为变化**：默认允许陌生人提交注册申请，管理员会收到审核通知；如需保持只能按 ID 添加，设置 `"registration": "off"`。
+- 设置菜单只剩模型、执行模式、推理；其余设置在 `/admin` 管理后台，原有命令不变。旧消息上的“高级”按钮会打开管理后台。
+- 统计行默认不显示余额；已在 /show 中手动开启的用户保持原选择。
+- 新增运行数据文件 `registrations.json`、`announcements.json`，请与其他运行数据一起备份。
+
 ## 2.1 → 2.2
 
 - 直接替换程序即可，原有 `config.json`、`prefs.json` 无需修改；新增配置项均为可选：`display`（显示开关的全员默认值）与 `llm_retries`（默认 6）。`display` 中写了未知项会在启动和 `--check` 时报错。

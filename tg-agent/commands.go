@@ -69,7 +69,11 @@ func handleCommand(chatID, uid int64, t, low string) bool {
 		return handleQuickCmd(chatID, uid, rest)
 	case "/cron", "/schedule":
 		return handleCron(chatID, uid, rest)
-	case "/skills":
+	case "/skills": // skills are managed by the agent; the command is admin-only
+		if !isAdmin(uid) {
+			sendMessage(chatID, tr(lang, "err.admin_only"), nil)
+			return true
+		}
 		return handleSkillsCommand(chatID, uid, rest)
 	case "/mode", "/approval", "/execution":
 		return handleExecutionCommand(chatID, uid, rest)
@@ -78,7 +82,24 @@ func handleCommand(chatID, uid int64, t, low string) bool {
 			sendMessage(chatID, tr(lang, "err.admin_only"), nil)
 			return true
 		}
-		sendUI(chatID, "<b>"+esc(tr(lang, "settings.title"))+"</b>\n\n"+esc(tr(lang, "settings.hint")), adminMenu(uid))
+		sendUI(chatID, settingsText(uid), adminMenu(uid))
+	case "/console", "/backend", "/后台":
+		sendConsole(chatID, uid)
+	case "/notice", "/notices", "/公告":
+		handleNoticeCommand(chatID, uid, "/notice", rest)
+	case "/announce", "/发布公告":
+		handleNoticeCommand(chatID, uid, "/announce", rest)
+	case "/about", "/support", "/支持":
+		text, kb := aboutPanel(uid)
+		sendUI(chatID, text, kb)
+	case "/register", "/signup", "/注册":
+		sendMessage(chatID, tr(lang, "reg.already_user"), nil)
+	case "/cancel":
+		if cancelAdminInput(uid) {
+			sendMessage(chatID, tr(lang, "input.cancelled"), nil)
+		} else {
+			sendMessage(chatID, tr(lang, "input.none"), nil)
+		}
 	case "/health":
 		if !isAdmin(uid) {
 			sendMessage(chatID, tr(lang, "err.admin_only"), nil)
@@ -93,7 +114,13 @@ func handleCommand(chatID, uid int64, t, low string) bool {
 		sendUI(chatID, listRunsHTML(lang, 10), runsKeyboard(lang, 5))
 	case "/img", "/file":
 		return handleGetFile(chatID, uid, cmd, rest)
-	case "/model", "/provider", "/persona", "/system", "/effort", "/admin", "/friend", "/ban", "/ws", "/workspace":
+	case "/admin":
+		if rest == "" {
+			sendConsole(chatID, uid) // /admin opens the console; /admin add|rem <id> edits the admin list
+			return true
+		}
+		return handleAdminCommand(chatID, uid, cmd, rest)
+	case "/model", "/provider", "/persona", "/system", "/effort", "/friend", "/ban", "/ws", "/workspace":
 		return handleAdminCommand(chatID, uid, cmd, rest)
 	default:
 		if looksLikePath(cmd) {
@@ -395,6 +422,6 @@ func cronKeyboard(lang string) interface{} {
 		}
 		rows = append(rows, append(row, btn(tr(lang, "cron.del")+" #"+id, "cron:del:"+id)))
 	}
-	rows = append(rows, []Btn{btn(tr(lang, "btn.refresh"), "act:cron"), btn(tr(lang, "btn.back"), "nav:root")})
+	rows = append(rows, []Btn{btn(tr(lang, "btn.refresh"), "act:cron"), btn(tr(lang, "btn.back"), "adm:root")})
 	return keyboard(rows)
 }

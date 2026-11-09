@@ -107,7 +107,8 @@ func TestShowCommandChangesDisplay(t *testing.T) {
 	cfg.Friends = []int64{friend}
 	cfgMu.Unlock()
 
-	if d := displayFor(uid, configSnapshot()); !d["tokens"] || !d["balance"] || !d["think"] || d["model"] {
+	// Balance is hidden by default; everything else but the model name is shown.
+	if d := displayFor(uid, configSnapshot()); !d["tokens"] || d["balance"] || !d["think"] || d["model"] {
 		t.Fatalf("unexpected defaults: %v", d)
 	}
 	handleShowCommand(uid, uid, "token off")
@@ -366,6 +367,9 @@ func TestTaskAnswerHasNoButtonsAndShowsStatistics(t *testing.T) {
 	cfg.ProviderName, cfg.Model = "mock", "mock"
 	cfgMu.Unlock()
 	uid := c.OwnerID
+	if err := setDisplay(uid, map[string]bool{"balance": true}); err != nil { // off by default
+		t.Fatal(err)
+	}
 
 	if !runUserTaskOpts(uid, uid, "检查 shell", nil, taskOptions{}) {
 		t.Fatal("task did not start")

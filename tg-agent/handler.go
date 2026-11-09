@@ -30,11 +30,11 @@ func handleMessage(m Message) {
 		return
 	}
 	if !allowed(uid) {
-		if isBanned(uid) {
-			sendMessage(chatID, tr(lang, "err.banned"), nil)
-		} else {
-			sendMessage(chatID, tr(lang, "err.unauthorized", uid), nil)
-		}
+		handleGuest(m, t, low) // banned notice, or the sign-up page
+		return
+	}
+	// After an admin taps an input button in the console, the next text is the value.
+	if !hasMedia && handlePendingInput(chatID, uid, t, low) {
 		return
 	}
 	switch low {

@@ -15,40 +15,78 @@ import (
 )
 
 var configFile string
-var version = "2.2.1"
+var version = "2.3.0"
 
-// botCommands is the Telegram command menu, registered in both languages.
+// botCommands is the short command menu every user sees.
 var botCommands = []struct{ name, zh, en string }{
-	{"menu", "打开任务面板", "Open the task panel"},
+	{"menu", "打开主菜单", "Open the main menu"},
 	{"new", "新建对话", "Start a new conversation"},
 	{"stop", "停止当前任务", "Stop the running task"},
-	{"status", "运行状态", "Show status"},
-	{"usage", "用量与余额", "Usage and balance"},
-	{"show", "显示设置：统计与过程开关", "Display: stats and progress switches"},
-	{"memory", "长期备忘", "Long-term memory"},
-	{"skills", "技能中心", "Skills"},
-	{"lang", "切换语言 中文/English", "Switch language"},
-	{"settings", "设置与自动化", "Settings and automation"},
+	{"show", "显示设置", "Display settings"},
+	{"notice", "查看公告", "Announcements"},
+	{"about", "支持作者", "Support the author"},
 	{"help", "使用帮助", "Help"},
 }
 
-func registerCommands() {
-	for _, variant := range []struct{ code, lang string }{{"", langEN}, {"zh", langZH}} {
-		var cmds []map[string]string
-		for _, c := range botCommands {
-			desc := c.en
-			if variant.lang == langZH {
-				desc = c.zh
-			}
-			cmds = append(cmds, map[string]string{"command": c.name, "description": desc})
+// adminCommands are added to the menu only in the owner's and admins' chats.
+var adminCommands = []struct{ name, zh, en string }{
+	{"settings", "设置：模型、执行模式、推理", "Settings: model, mode, reasoning"},
+	{"admin", "管理后台", "Admin console"},
+	{"usage", "用量与余额", "Usage and balance"},
+}
+
+func commandList(admin bool, lang string) []map[string]string {
+	list := botCommands
+	if admin {
+		list = append(list[:len(list):len(list)], adminCommands...)
+	}
+	var cmds []map[string]string
+	for _, c := range list {
+		desc := c.en
+		if lang == langZH {
+			desc = c.zh
 		}
-		payload := map[string]interface{}{"commands": cmds}
+		cmds = append(cmds, map[string]string{"command": c.name, "description": desc})
+	}
+	return cmds
+}
+
+// commandVariants registers English as the default and Chinese for zh clients.
+var commandVariants = []struct{ code, lang string }{{"", langEN}, {"zh", langZH}}
+
+func registerCommands() {
+	for _, variant := range commandVariants {
+		payload := map[string]interface{}{"commands": commandList(false, variant.lang)}
 		if variant.code != "" {
 			payload["language_code"] = variant.code
 		}
 		tgCall("setMyCommands", payload)
 	}
 	tgCall("setChatMenuButton", map[string]interface{}{"menu_button": map[string]interface{}{"type": "commands"}})
+	c := configSnapshot()
+	for _, id := range append([]int64{c.OwnerID}, c.Admins...) {
+		if id > 0 {
+			registerChatCommands(id, true)
+		}
+	}
+}
+
+// registerChatCommands gives one admin chat the admin menu, or removes it so
+// the chat falls back to the default list.
+func registerChatCommands(chatID int64, admin bool) {
+	scope := map[string]interface{}{"type": "chat", "chat_id": chatID}
+	for _, variant := range commandVariants {
+		payload := map[string]interface{}{"scope": scope}
+		if variant.code != "" {
+			payload["language_code"] = variant.code
+		}
+		if admin {
+			payload["commands"] = commandList(true, variant.lang)
+			tgCall("setMyCommands", payload)
+		} else {
+			tgCall("deleteMyCommands", payload)
+		}
+	}
 }
 
 func main() { os.Exit(runMain()) }

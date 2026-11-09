@@ -62,7 +62,7 @@ func runsKeyboard(lang string, n int) interface{} {
 	if len(row) > 0 {
 		rows = append(rows, row)
 	}
-	rows = append(rows, []Btn{btn(tr(lang, "btn.refresh"), "act:runs"), btn(tr(lang, "btn.back"), "nav:root")})
+	rows = append(rows, []Btn{btn(tr(lang, "btn.refresh"), "act:runs"), btn(tr(lang, "btn.back"), "adm:root")})
 	return keyboard(rows)
 }
 
